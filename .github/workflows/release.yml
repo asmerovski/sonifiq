@@ -157,7 +157,7 @@ jobs:
           cp packaging/PKGBUILD /tmp/pkgbuild/PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=$VER/" /tmp/pkgbuild/PKGBUILD
           tar --exclude='.git' -czf /tmp/pkgbuild/${{ env.PKG_NAME }}-$VER.tar.gz \
-            --transform "s|^\.|${{ env.PKG_NAME }}-$VER|" .
+            --transform "s|^\./|${{ env.PKG_NAME }}-$VER/|" .
 
       - name: Set up build user
         run: |
@@ -220,7 +220,7 @@ jobs:
       - name: Copy icon
         run: |
           mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
-          cp sonifiq.svg \
+          cp res/icons/app.svg \
             AppDir/usr/share/icons/hicolor/scalable/apps/${{ env.PKG_NAME }}.svg
 
       - name: Download linuxdeploy + Qt plugin

@@ -51,7 +51,7 @@ install(TARGETS sonifiq
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES sonifiq.svg
+install(FILES res/icons/app.svg
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
     RENAME sonifiq.svg
 )

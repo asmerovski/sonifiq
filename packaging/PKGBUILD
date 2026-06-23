@@ -16,7 +16,7 @@ build() {
     cmake -B build -S . -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr \
-        -DAUDIOQ_VERSION="$pkgver"
+        -DSONIFIQ_VERSION="$pkgver"
     cmake --build build
 }
 
