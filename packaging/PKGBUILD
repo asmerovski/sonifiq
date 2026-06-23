@@ -1,0 +1,26 @@
+# Maintainer: Your Name <you@example.com>
+pkgname=sonifiq
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Qt6 audio format converter for Linux"
+arch=('x86_64')
+url="https://github.com/asmerovski/sonifiq"
+license=('MIT')
+depends=('qt6-base' 'ffmpeg')
+makedepends=('cmake' 'ninja' 'gcc')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$pkgname-$pkgver"
+    cmake -B build -S . -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DAUDIOQ_VERSION="$pkgver"
+    cmake --build build
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    DESTDIR="$pkgdir" cmake --install build
+}

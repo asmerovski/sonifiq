@@ -1,0 +1,10 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=SonifiQ
+Comment=Audio format converter powered by ffmpeg
+Exec=sonifiq
+Icon=sonifiq
+Terminal=false
+Type=Application
+Categories=Audio;AudioVideo;
+Keywords=audio;converter;flac;mp3;ogg;opus;wav;
