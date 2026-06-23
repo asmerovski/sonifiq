@@ -146,7 +146,8 @@ jobs:
           pacman -S --noconfirm --needed \
             base-devel git cmake ninja \
             qt6-base \
-            mesa libxkbcommon vulkan-icd-loader
+            mesa libxkbcommon vulkan-icd-loader \
+            ffmpeg
 
       - name: Prepare source tarball for makepkg
         run: |
