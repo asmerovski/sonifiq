@@ -1,0 +1,259 @@
+name: Release Packages
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Smoke-test builds on every push/PR; attaches release assets only when a
+# version tag (v*) is pushed.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME:    sonifiQ
+  APP_BINARY:  sonifiq            # matches add_executable(sonifiq ...) in CMakeLists.txt
+  APP_ID:      io.sonifiq.sonifiQ  # Flatpak / AppStream application ID
+  PKG_NAME:    sonifiq            # lowercase, used for .deb/.rpm/PKGBUILD names
+
+jobs:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # DEB  (Ubuntu 24.04 / CPack DEB)
+  # ───────────────────────────────────────────────────────────────────────────
+  deb:
+    name: Debian Package (amd64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: >
+            build-essential cmake ninja-build dpkg-dev
+            qt6-base-dev qt6-base-dev-tools
+            libgl-dev libxkbcommon-dev libvulkan-dev
+          version: 1.0
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCPACK_GENERATOR=DEB
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Package DEB
+        working-directory: build
+        run: cpack -G DEB
+
+      - name: Rename DEB
+        working-directory: build
+        run: |
+          find . -maxdepth 1 -name '*.deb' \
+            -exec mv {} ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-amd64.deb \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: build/${{ env.APP_NAME }}-${{ github.ref_name }}-linux-amd64.deb
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/${{ env.APP_NAME }}-${{ github.ref_name }}-linux-amd64.deb
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # RPM  (Fedora 40 container / CPack RPM)
+  # ───────────────────────────────────────────────────────────────────────────
+  rpm:
+    name: RPM Package (x86_64)
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            cmake ninja-build gcc-c++ rpm-build \
+            qt6-qtbase-devel qt6-qtbase-private-devel \
+            mesa-libGL-devel libxkbcommon-devel vulkan-loader-devel
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCPACK_GENERATOR=RPM
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Package RPM
+        working-directory: build
+        run: cpack -G RPM
+
+      - name: Rename RPM
+        working-directory: build
+        run: |
+          find . -maxdepth 1 -name '*.rpm' \
+            -exec mv {} ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.rpm \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: build/${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.rpm
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.rpm
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Arch Linux  (archlinux:latest container / makepkg)
+  # ───────────────────────────────────────────────────────────────────────────
+  arch:
+    name: Arch Linux Package (x86_64)
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel git cmake ninja \
+            qt6-base \
+            mesa libxkbcommon vulkan-icd-loader
+
+      - name: Prepare source tarball for makepkg
+        run: |
+          VER=$(grep -m1 'set(SONIFIQ_VERSION' CMakeLists.txt \
+                | sed 's/.*set(SONIFIQ_VERSION "\([0-9.]*\)".*/\1/')
+          echo "PKGVER=$VER" >> $GITHUB_ENV
+          mkdir -p /tmp/pkgbuild
+          cp packaging/PKGBUILD /tmp/pkgbuild/PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$VER/" /tmp/pkgbuild/PKGBUILD
+          tar --exclude='.git' -czf /tmp/pkgbuild/${{ env.PKG_NAME }}-$VER.tar.gz \
+            --transform "s|^\.|${{ env.PKG_NAME }}-$VER|" .
+
+      - name: Set up build user
+        run: |
+          useradd -m builder
+          chown -R builder:builder /tmp/pkgbuild
+
+      - name: Build package
+        run: |
+          su builder -c "cd /tmp/pkgbuild && makepkg --noconfirm --noprogressbar"
+
+      - name: Collect package
+        run: |
+          PKG=$(find /tmp/pkgbuild -name '*.pkg.tar.zst' | head -1)
+          cp "$PKG" ${{ env.APP_NAME }}-${{ github.ref_name }}-arch-x86_64.pkg.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: ${{ env.APP_NAME }}-${{ github.ref_name }}-arch-x86_64.pkg.tar.zst
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APP_NAME }}-${{ github.ref_name }}-arch-x86_64.pkg.tar.zst
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # AppImage  (Ubuntu 24.04 / linuxdeploy + Qt plugin)
+  # ───────────────────────────────────────────────────────────────────────────
+  appimage:
+    name: AppImage (x86_64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: >
+            build-essential cmake ninja-build
+            qt6-base-dev qt6-base-dev-tools
+            libgl-dev libxkbcommon-dev libvulkan-dev
+            libfuse2
+          version: 1.0
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Stage AppDir
+        run: DESTDIR=${{ github.workspace }}/AppDir cmake --install build
+
+      - name: Copy icon
+        run: |
+          mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
+          cp sonifiq.svg \
+            AppDir/usr/share/icons/hicolor/scalable/apps/${{ env.PKG_NAME }}.svg
+
+      - name: Download linuxdeploy + Qt plugin
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+      - name: Package AppImage
+        env:
+          QMAKE: /usr/lib/qt6/bin/qmake
+          OUTPUT: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.AppImage
+        run: |
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --output appimage \
+            --desktop-file AppDir/usr/share/applications/${{ env.PKG_NAME }}.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/${{ env.PKG_NAME }}.svg
+
+      - name: Rename AppImage
+        run: |
+          find . -maxdepth 1 -name '*.AppImage' ! -name 'linuxdeploy*' \
+            -exec mv {} ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.AppImage \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.AppImage
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.AppImage

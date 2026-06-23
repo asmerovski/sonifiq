@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (Ubuntu)
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Cache apt packages ───────────────────────────────────────────────────
+      - name: Cache apt
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: >
+            qt6-base-dev
+            qt6-base-dev-tools
+            libgl-dev
+            libxkbcommon-dev
+            libvulkan-dev
+            cmake
+            ninja-build
+            ffmpeg
+          version: 1.0
+
+      # ── Configure ────────────────────────────────────────────────────────────
+      - name: Configure
+        run: |
+          cmake -B build -S . \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+
+      # ── Build ─────────────────────────────────────────────────────────────────
+      - name: Build
+        run: cmake --build build --parallel
+
+      # ── Tests ─────────────────────────────────────────────────────────────────
+      - name: Run tests
+        working-directory: build
+        env:
+          # Tests use QTEST_GUILESS_MAIN (no display needed),
+          # but set offscreen just in case Qt probes for a platform.
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --output-on-failure --verbose
+
+      # ── Upload test results ───────────────────────────────────────────────────
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/Testing/
+
+      # ── Upload binary (for manual inspection, not a release) ─────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonifiq-linux-x86_64
+          path: build/sonifiq
+          if-no-files-found: error
