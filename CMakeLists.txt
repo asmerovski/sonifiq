@@ -55,7 +55,7 @@ install(FILES ${CMAKE_SOURCE_DIR}/res/icons/app.svg
     RENAME sonifiq.svg
 )
 
-install(FILES sonifiq.desktop
+install(FILES ${CMAKE_SOURCE_DIR}/sonifiq.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
