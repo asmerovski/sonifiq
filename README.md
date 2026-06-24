@@ -15,7 +15,6 @@ Vibe coded with claude code.
 - **Drag & drop** — files and folders, with optional subfolder recursion
 - **Settings dialog** — enable/disable individual formats, codec availability precheck
 - **ffmpeg log pane** — dockable, hidable, colour-coded output from ffmpeg
-- **Dark theme UI**
 
 ---
 
