@@ -55,6 +55,11 @@ jobs:
       - name: Build
         run: cmake --build build --parallel $(nproc)
 
+      - name: Verify required assets
+        run: |
+          test -f res/icons/app.svg   || (echo "Missing: res/icons/app.svg" && exit 1)
+          test -f sonifiq.desktop     || (echo "Missing: sonifiq.desktop"   && exit 1)
+
       - name: Package DEB
         working-directory: build
         run: cpack -G DEB
