@@ -50,7 +50,7 @@ install(TARGETS sonifiq
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES res/icons/app.svg
+install(FILES ${CMAKE_SOURCE_DIR}/res/icons/app.svg
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
     RENAME sonifiq.svg
 )
@@ -77,4 +77,3 @@ set(CPACK_RPM_PACKAGE_GROUP         "Applications/Multimedia")
 set(CPACK_RPM_PACKAGE_REQUIRES      "qt6-qtbase, ffmpeg")
 
 include(CPack)
-
