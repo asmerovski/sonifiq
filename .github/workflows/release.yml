@@ -57,7 +57,7 @@ jobs:
 
       - name: Verify required assets
         run: |
-          test -f res/icons/app.svg   || (echo "Missing: res/icons/app.svg" && exit 1)
+          test -f src/res/icons/app.svg   || (echo "Missing: src/res/icons/app.svg" && exit 1)
           test -f sonifiq.desktop     || (echo "Missing: sonifiq.desktop"   && exit 1)
 
       - name: Package DEB
@@ -226,7 +226,7 @@ jobs:
       - name: Copy icon
         run: |
           mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
-          cp res/icons/app.svg \
+          cp src/res/icons/app.svg \
             AppDir/usr/share/icons/hicolor/scalable/apps/${{ env.PKG_NAME }}.svg
 
       - name: Download linuxdeploy + Qt plugin
