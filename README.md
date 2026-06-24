@@ -1,6 +1,7 @@
 # SonifiQ
 
 A fast, multi-threaded audio format converter for Linux, built with Qt6 and powered by ffmpeg.
+Vibe coded with claude code.
 
 ---
 
