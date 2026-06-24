@@ -3,6 +3,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
+#include <QScrollArea>
+#include <QFrame>
 #include <QFileDialog>
 #include <QDir>
 #include <QDirIterator>
@@ -287,9 +289,78 @@ MainWindow::~MainWindow() {
 void MainWindow::setupUI() {
     auto *central = new QWidget(this);
     setCentralWidget(central);
-    auto *root = new QVBoxLayout(central);
+    auto *rootLayout = new QHBoxLayout(central);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+
+    // ── Left sidebar ──────────────────────────────────────────────────────────
+    auto *sidebar = new QScrollArea();
+    sidebar->setWidgetResizable(true);
+    sidebar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sidebar->setFixedWidth(220);
+    sidebar->setFrameShape(QFrame::NoFrame);
+
+    auto *sideWidget = new QWidget();
+    auto *sideLayout = new QVBoxLayout(sideWidget);
+    sideLayout->setContentsMargins(14, 16, 14, 16);
+    sideLayout->setSpacing(6);
+
+    auto addSideLabel = [&](const QString &text) {
+        auto *lbl = new QLabel(text);
+        sideLayout->addSpacing(10);
+        sideLayout->addWidget(lbl);
+    };
+
+    addSideLabel("Output Format");
+    m_formatCombo = new QComboBox();
+    m_formatCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sideLayout->addWidget(m_formatCombo);
+
+    addSideLabel("Quality / Bitrate");
+    m_qualityCombo = new QComboBox();
+    m_qualityCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sideLayout->addWidget(m_qualityCombo);
+    rebuildFormatCombo(); // called after both combos exist
+
+    addSideLabel("Channels");
+    m_channelsCombo = new QComboBox();
+    m_channelsCombo->addItems({"Source (keep)", "Stereo (2ch)", "Mono (1ch)"});
+    m_channelsCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sideLayout->addWidget(m_channelsCombo);
+
+    addSideLabel("Sample Rate");
+    m_samplerateCombo = new QComboBox();
+    m_samplerateCombo->addItems({"Source (keep)", "48000 Hz", "44100 Hz", "32000 Hz", "22050 Hz"});
+    m_samplerateCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sideLayout->addWidget(m_samplerateCombo);
+
+    sideLayout->addSpacing(16);
+    m_keepTags = new QCheckBox("Preserve tags");
+    m_keepTags->setChecked(true);
+    sideLayout->addWidget(m_keepTags);
+
+    m_keepCover = new QCheckBox("Preserve cover art");
+    m_keepCover->setChecked(true);
+    sideLayout->addWidget(m_keepCover);
+
+    addSideLabel("Parallel Threads");
+    m_threadsSpin = new QSpinBox();
+    m_threadsSpin->setRange(1, QThread::idealThreadCount());
+    m_threadsSpin->setValue(qMax(1, QThread::idealThreadCount() / 2));
+    m_threadsSpin->setSuffix(QString("  / %1").arg(QThread::idealThreadCount()));
+    m_threadsSpin->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sideLayout->addWidget(m_threadsSpin);
+
+    sideLayout->addStretch();
+    sidebar->setWidget(sideWidget);
+    rootLayout->addWidget(sidebar);
+
+    // ── Right content area ────────────────────────────────────────────────────
+    auto *contentWidget = new QWidget();
+    auto *root = new QVBoxLayout(contentWidget);
     root->setContentsMargins(16, 14, 16, 14);
     root->setSpacing(12);
+    rootLayout->addWidget(contentWidget, 1);
 
     // ── Toolbar ───────────────────────────────────────────────────────────────
     auto *toolbar = new QHBoxLayout();
@@ -338,62 +409,23 @@ void MainWindow::setupUI() {
     m_fileTable->verticalHeader()->setDefaultSectionSize(34);
     root->addWidget(m_fileTable, 1);
 
-    // ── Settings panel ────────────────────────────────────────────────────────
-    auto *settingsBox = new QGroupBox("Conversion Settings");
-    auto *sg = new QGridLayout(settingsBox);
-    sg->setSpacing(10);
-    sg->setContentsMargins(12, 16, 12, 12);
-
-    sg->addWidget(new QLabel("Output Format"), 0, 0);
-    m_formatCombo = new QComboBox();
-    sg->addWidget(m_formatCombo, 0, 1);
-
-    sg->addWidget(new QLabel("Quality / Bitrate"), 0, 2);
-    m_qualityCombo = new QComboBox();
-    m_qualityCombo->setMinimumWidth(185);
-    sg->addWidget(m_qualityCombo, 0, 3);
-    rebuildFormatCombo(); // called after both combos exist
-
-    sg->addWidget(new QLabel("Channels"), 0, 4);
-    m_channelsCombo = new QComboBox();
-    m_channelsCombo->addItems({"Source (keep)", "Stereo (2ch)", "Mono (1ch)"});
-    sg->addWidget(m_channelsCombo, 0, 5);
-
-    sg->addWidget(new QLabel("Sample Rate"), 0, 6);
-    m_samplerateCombo = new QComboBox();
-    m_samplerateCombo->addItems({"Source (keep)", "48000 Hz", "44100 Hz", "32000 Hz", "22050 Hz"});
-    sg->addWidget(m_samplerateCombo, 0, 7);
-
+    // ── Output destination ────────────────────────────────────────────────────
+    auto *destLayout = new QHBoxLayout();
     m_sameDir = new QCheckBox("Save next to source files");
     m_sameDir->setChecked(true);
-    sg->addWidget(m_sameDir, 1, 0, 1, 2);
-
-    sg->addWidget(new QLabel("Output folder:"), 1, 2);
+    destLayout->addWidget(m_sameDir);
+    destLayout->addSpacing(12);
+    auto *folderLabel = new QLabel("Output folder:");
+    destLayout->addWidget(folderLabel);
     m_outputDirEdit = new QLineEdit();
     m_outputDirEdit->setPlaceholderText("Select output directory…");
     m_outputDirEdit->setEnabled(false);
-    sg->addWidget(m_outputDirEdit, 1, 3, 1, 3);
+    destLayout->addWidget(m_outputDirEdit, 1);
     m_btnBrowse = new QPushButton("Browse");
     m_btnBrowse->setObjectName("btnSecondary");
     m_btnBrowse->setEnabled(false);
-    sg->addWidget(m_btnBrowse, 1, 6);
-
-    m_keepTags = new QCheckBox("Preserve tags");
-    m_keepTags->setChecked(true);
-    sg->addWidget(m_keepTags, 1, 7);
-
-    sg->addWidget(new QLabel("Parallel threads:"), 2, 0);
-    m_threadsSpin = new QSpinBox();
-    m_threadsSpin->setRange(1, QThread::idealThreadCount());
-    m_threadsSpin->setValue(qMax(1, QThread::idealThreadCount() / 2));
-    m_threadsSpin->setSuffix(QString("  (max %1)").arg(QThread::idealThreadCount()));
-    sg->addWidget(m_threadsSpin, 2, 1);
-
-    m_keepCover = new QCheckBox("Preserve cover art");
-    m_keepCover->setChecked(true);
-    sg->addWidget(m_keepCover, 2, 7);
-
-    root->addWidget(settingsBox);
+    destLayout->addWidget(m_btnBrowse);
+    root->addLayout(destLayout);
 
     // ── Bottom bar ────────────────────────────────────────────────────────────
     auto *bottom = new QHBoxLayout();
