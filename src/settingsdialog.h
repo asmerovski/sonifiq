@@ -32,7 +32,6 @@ private slots:
 
 private:
     void setupUI();
-    void applyStylesheet();
     void loadSettings();
     void saveSettings();
 

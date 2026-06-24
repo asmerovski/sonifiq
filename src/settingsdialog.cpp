@@ -33,7 +33,6 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_formats = allFormats();
     loadSettings();
     setupUI();
-    applyStylesheet();
 }
 
 // ── Load / Save ───────────────────────────────────────────────────────────────
@@ -208,35 +207,3 @@ bool SettingsDialog::isFormatEnabled(const QString &id) const {
     return true;
 }
 
-// ── Stylesheet ────────────────────────────────────────────────────────────────
-
-void SettingsDialog::applyStylesheet() {
-    setStyleSheet(R"(
-QDialog, QWidget { background:#1a1d23; color:#d4d8e0;
-    font-family:"Segoe UI",Ubuntu,sans-serif; font-size:13px; }
-QTabWidget::pane { border:1px solid #2e3340; border-radius:6px; background:#20242c; }
-QTabBar::tab { background:#16191f; color:#8b92a8; padding:8px 20px;
-    border:1px solid #2e3340; border-bottom:none; border-radius:4px 4px 0 0; margin-right:2px; }
-QTabBar::tab:selected { background:#20242c; color:#d4d8e0; border-bottom:2px solid #4a7fc1; }
-QLabel { color:#d4d8e0; }
-QLabel#introLabel { color:#8b92a8; font-size:12px; padding:4px 0; }
-QLabel#tableHdr { color:#6b7494; font-size:11px; font-weight:600;
-    text-transform:uppercase; letter-spacing:0.5px; padding-bottom:4px; }
-QLabel#codecLabel { color:#8b92a8; font-size:12px; }
-QLabel#statusOk      { color:#4caf7d; font-size:12px; }
-QLabel#statusUnknown { color:#6b7494; font-size:12px; }
-QLabel#statusErr     { color:#e05c5c; font-size:12px; }
-QLabel#checkStatus   { color:#8b92a8; font-size:12px; }
-QCheckBox#fmtCheck::indicator { width:16px; height:16px; border-radius:3px;
-    border:1px solid #3a4055; background:#16191f; }
-QCheckBox#fmtCheck::indicator:checked { background:#2a5298; border-color:#4a7fc1; }
-QPushButton { border-radius:5px; padding:6px 16px; font-weight:600; border:none; min-height:30px; }
-QPushButton#btnPrimary { background:#24293a; color:#a8b8d8; border:1px solid #3a4458; }
-QPushButton#btnPrimary:hover { background:#2e3550; border-color:#4a7fc1; color:#d4e4ff; }
-QDialogButtonBox QPushButton { background:#24293a; color:#a8b8d8;
-    border:1px solid #3a4458; min-width:80px; }
-QDialogButtonBox QPushButton:hover { background:#2e3550; }
-QDialogButtonBox QPushButton:default { background:#1a4a9e; color:#fff; border:none; }
-QDialogButtonBox QPushButton:default:hover { background:#1f54b4; }
-    )");
-}

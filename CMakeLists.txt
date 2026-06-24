@@ -29,13 +29,12 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 # ── Main executable ───────────────────────────────────────────────────────────
 add_executable(sonifiq
-    main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    settingsdialog.cpp
-    settingsdialog.h
-    res.qrc
-
+    src/main.cpp
+    src/mainwindow.cpp
+    src/mainwindow.h
+    src/settingsdialog.cpp
+    src/settingsdialog.h
+    src/res.qrc
 )
 
 target_link_libraries(sonifiq PRIVATE Qt6::Widgets)

@@ -39,37 +39,37 @@ struct FormatDef {
 
 static const QList<FormatDef> ALL_FORMATS = {
     { "mp3",  "MP3",           "mp3",
-      {"320 kbps CBR","256 kbps CBR","192 kbps CBR","128 kbps CBR",
-       "V0 (VBR ~245)","V2 (VBR ~190)","V4 (VBR ~165)"},
-      {"-b:a\n320k", "-b:a\n256k", "-b:a\n192k", "-b:a\n128k",
-       "-q:a\n0",    "-q:a\n2",    "-q:a\n4"},
-      "libmp3lame", true },
+     {"320 kbps CBR","256 kbps CBR","192 kbps CBR","128 kbps CBR",
+      "V0 (VBR ~245)","V2 (VBR ~190)","V4 (VBR ~165)"},
+     {"-b:a\n320k", "-b:a\n256k", "-b:a\n192k", "-b:a\n128k",
+      "-q:a\n0",    "-q:a\n2",    "-q:a\n4"},
+     "libmp3lame", true },
     { "m4a",  "AAC (.m4a)",    "m4a",
-      {"320 kbps","256 kbps","192 kbps","128 kbps"},
-      {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k"},
-      "aac", false },   // m4a: cover art requires -codec:v copy; omit for reliability
+     {"320 kbps","256 kbps","192 kbps","128 kbps"},
+     {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k"},
+     "aac", false },   // m4a: cover art requires -codec:v copy; omit for reliability
     { "ogg",  "Ogg Vorbis",    "ogg",
-      {"Quality 10 (~500k)","Quality 8 (~256k)","Quality 6 (~192k)",
-       "Quality 4 (~128k)","Quality 2 (~96k)"},
-      {"-q:a\n10","-q:a\n8","-q:a\n6","-q:a\n4","-q:a\n2"},
-      "libvorbis", false },
+     {"Quality 10 (~500k)","Quality 8 (~256k)","Quality 6 (~192k)",
+      "Quality 4 (~128k)","Quality 2 (~96k)"},
+     {"-q:a\n10","-q:a\n8","-q:a\n6","-q:a\n4","-q:a\n2"},
+     "libvorbis", false },
     { "opus", "Opus",          "opus",
-      {"320 kbps","256 kbps","192 kbps","128 kbps","96 kbps","64 kbps"},
-      {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k","-b:a\n96k","-b:a\n64k"},
-      "libopus", false },
+     {"320 kbps","256 kbps","192 kbps","128 kbps","96 kbps","64 kbps"},
+     {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k","-b:a\n96k","-b:a\n64k"},
+     "libopus", false },
     { "flac", "FLAC",          "flac",
-      {"Level 8 (best)","Level 5 (default)","Level 0 (fast)"},
-      {"-compression_level\n8","-compression_level\n5","-compression_level\n0"},
-      "flac", true },
+     {"Level 8 (best)","Level 5 (default)","Level 0 (fast)"},
+     {"-compression_level\n8","-compression_level\n5","-compression_level\n0"},
+     "flac", true },
     { "wav",  "WAV (PCM)",     "wav",
-      {"16-bit","24-bit","32-bit float"},
-      {"-acodec\npcm_s16le","-acodec\npcm_s24le","-acodec\npcm_f32le"},
-      "", false },          // WAV: codec is embedded in qualityArg itself
+     {"16-bit","24-bit","32-bit float"},
+     {"-acodec\npcm_s16le","-acodec\npcm_s24le","-acodec\npcm_f32le"},
+     "", false },          // WAV: codec is embedded in qualityArg itself
     { "aiff", "AIFF",          "aiff",
-      {"16-bit","24-bit"},
-      {"-acodec\npcm_s16be","-acodec\npcm_s24be"},
-      "", false },
-};
+     {"16-bit","24-bit"},
+     {"-acodec\npcm_s16be","-acodec\npcm_s24be"},
+     "", false },
+    };
 
 // Returns only the formats the user has enabled in Settings
 static QList<FormatDef> enabledFormats() {
@@ -98,15 +98,15 @@ void ConversionWorker::run() {
         QProcess probe;
         probe.setProcessChannelMode(QProcess::SeparateChannels);
         probe.start("ffprobe", {
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            m_job.inputPath
-        });
+                                   "-v", "error",
+                                   "-show_entries", "format=duration",
+                                   "-of", "default=noprint_wrappers=1:nokey=1",
+                                   m_job.inputPath
+                               });
         if (probe.waitForFinished(10000)) {
             bool ok;
             double secs = QString::fromLocal8Bit(
-                probe.readAllStandardOutput()).trimmed().toDouble(&ok);
+                              probe.readAllStandardOutput()).trimmed().toDouble(&ok);
             if (ok && secs > 0.0)
                 durationUs = static_cast<qint64>(secs * 1000000.0);
         }
@@ -155,11 +155,11 @@ void ConversionWorker::run() {
             int nl;
             while ((nl = m_stderrBuf.indexOf('\n')) != -1) {
                 QString line = QString::fromLocal8Bit(
-                    m_stderrBuf.left(nl)).trimmed();
+                                   m_stderrBuf.left(nl)).trimmed();
                 m_stderrBuf.remove(0, nl + 1);
                 if (!line.isEmpty())
                     emit m_relay->logLine(m_job.row,
-                        QFileInfo(m_job.inputPath).fileName(), line);
+                                          QFileInfo(m_job.inputPath).fileName(), line);
             }
         }
 
@@ -205,17 +205,17 @@ void ConversionWorker::run() {
         int nl;
         while ((nl = m_stderrBuf.indexOf('\n')) != -1) {
             QString line = QString::fromLocal8Bit(
-                m_stderrBuf.left(nl)).trimmed();
+                               m_stderrBuf.left(nl)).trimmed();
             m_stderrBuf.remove(0, nl + 1);
             if (!line.isEmpty())
                 emit m_relay->logLine(m_job.row,
-                    QFileInfo(m_job.inputPath).fileName(), line);
+                                      QFileInfo(m_job.inputPath).fileName(), line);
         }
         // Flush any final partial line without newline
         if (!m_stderrBuf.trimmed().isEmpty())
             emit m_relay->logLine(m_job.row,
-                QFileInfo(m_job.inputPath).fileName(),
-                QString::fromLocal8Bit(m_stderrBuf.trimmed()));
+                                  QFileInfo(m_job.inputPath).fileName(),
+                                  QString::fromLocal8Bit(m_stderrBuf.trimmed()));
     }
 
     // Extract the most useful line from stderr: last non-empty line that starts
@@ -226,8 +226,8 @@ void ConversionWorker::run() {
         for (int i = lines.size() - 1; i >= 0; --i) {
             const QString line = lines[i].trimmed();
             if (!line.isEmpty() && line[0].isUpper() && !line.startsWith("Stream")
-                    && !line.startsWith("Output #") && !line.startsWith("Input #")
-                    && !line.startsWith("Press")) {
+                && !line.startsWith("Output #") && !line.startsWith("Input #")
+                && !line.startsWith("Press")) {
                 msg = line;
                 break;
             }
@@ -275,7 +275,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     resize(1140, 720);
     setAcceptDrops(true);
     setupUI();
-    applyStylesheet();
 }
 
 MainWindow::~MainWindow() {
@@ -484,90 +483,21 @@ void MainWindow::setupUI() {
     });
     m_logView->setProperty("autoScroll", true);
 
+    connect(m_fileTable->model(), &QAbstractItemModel::rowsInserted,
+            this, &MainWindow::updateListButtons);
+    connect(m_fileTable->model(), &QAbstractItemModel::rowsRemoved,
+            this, &MainWindow::updateListButtons);
+
     updateFormatOptions(0);
+    updateListButtons(); // set initial state (list empty → buttons disabled)
 }
 
-// ── Stylesheet ────────────────────────────────────────────────────────────────
+// ── List-dependent button state ─────────────────────────────────────────────
 
-void MainWindow::applyStylesheet() {
-    setStyleSheet(R"(
-QMainWindow,QWidget{background:#1a1d23;color:#d4d8e0;
-    font-family:"Segoe UI",Ubuntu,sans-serif;font-size:13px;}
-QGroupBox{background:#20242c;border:1px solid #2e3340;border-radius:6px;
-    margin-top:10px;padding-top:6px;font-weight:600;color:#8b92a8;
-    font-size:11px;text-transform:uppercase;letter-spacing:1px;}
-QGroupBox::title{subcontrol-origin:margin;left:10px;top:-1px;
-    padding:0 6px;background:#20242c;}
-QTableWidget{background:#20242c;border:1px solid #2e3340;border-radius:6px;
-    gridline-color:transparent;color:#d4d8e0;selection-background-color:#2a5298;outline:none;}
-QTableWidget::item{padding:4px 10px;border:none;}
-QTableWidget::item:alternate{background:#1e2229;}
-QTableWidget::item:selected{background:#2a4a7f;color:#fff;}
-QHeaderView::section{background:#16191f;color:#8b92a8;border:none;
-    border-bottom:2px solid #2e3340;padding:6px 10px;font-weight:600;
-    font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}
-QHeaderView::section:horizontal{border-right:1px solid #2e3340;}
-QComboBox{background:#16191f;border:1px solid #2e3340;border-radius:5px;
-    padding:5px 10px;color:#d4d8e0;min-height:28px;}
-QComboBox:hover{border-color:#4a7fc1;}
-QComboBox::drop-down{border:none;width:24px;}
-QComboBox::down-arrow{image:none;border-left:4px solid transparent;
-    border-right:4px solid transparent;border-top:5px solid #8b92a8;margin-right:8px;}
-QComboBox QAbstractItemView{background:#16191f;border:1px solid #4a7fc1;
-    selection-background-color:#2a5298;color:#d4d8e0;}
-QLineEdit{background:#16191f;border:1px solid #2e3340;border-radius:5px;
-    padding:5px 10px;color:#d4d8e0;min-height:28px;}
-QLineEdit:hover{border-color:#4a7fc1;}
-QLineEdit:disabled{color:#555b6e;}
-QSpinBox{background:#16191f;border:1px solid #2e3340;border-radius:5px;
-    padding:5px 10px;color:#d4d8e0;min-height:28px;}
-QSpinBox:hover{border-color:#4a7fc1;}
-QSpinBox::up-button,QSpinBox::down-button{width:18px;background:#20242c;
-    border:none;border-left:1px solid #2e3340;}
-QSpinBox::up-arrow{border-left:3px solid transparent;border-right:3px solid transparent;
-    border-bottom:4px solid #8b92a8;}
-QSpinBox::down-arrow{border-left:3px solid transparent;border-right:3px solid transparent;
-    border-top:4px solid #8b92a8;}
-QCheckBox{spacing:8px;color:#a0a8bc;}
-QCheckBox::indicator{width:16px;height:16px;border-radius:3px;
-    border:1px solid #3a4055;background:#16191f;}
-QCheckBox::indicator:checked{background:#2a5298;border-color:#4a7fc1;}
-QLabel{color:#8b92a8;}
-QProgressBar{background:#16191f;border:1px solid #2e3340;border-radius:5px;
-    height:22px;text-align:center;color:#d4d8e0;font-weight:600;font-size:11px;}
-QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
-    stop:0 #2a5298,stop:1 #4a7fc1);border-radius:4px;}
-QPushButton{border-radius:5px;padding:7px 18px;font-weight:600;
-    font-size:13px;min-height:32px;border:none;}
-QPushButton#btnPrimary{background:#24293a;color:#a8b8d8;border:1px solid #3a4458;}
-QPushButton#btnPrimary:hover{background:#2e3550;border-color:#4a7fc1;color:#d4e4ff;}
-QPushButton#btnSecondary{background:#1e2229;color:#8b92a8;border:1px solid #2e3340;}
-QPushButton#btnSecondary:hover{background:#272d38;color:#d4d8e0;}
-QPushButton#btnConvert{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
-    stop:0 #1a4a9e,stop:1 #2a6acc);color:#fff;padding:7px 32px;letter-spacing:0.5px;}
-QPushButton#btnConvert:hover{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
-    stop:0 #1f54b4,stop:1 #3076e0);}
-QPushButton#btnConvert:disabled{background:#2a2e3a;color:#555b6e;}
-QPushButton:disabled{color:#44495a;border-color:#252930;}
-QLabel#statusLabel{color:#6b7494;font-size:12px;}
-QScrollBar:vertical{background:#16191f;width:8px;border-radius:4px;}
-QScrollBar::handle:vertical{background:#2e3340;border-radius:4px;min-height:30px;}
-QScrollBar::handle:vertical:hover{background:#4a7fc1;}
-QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
-QDockWidget{background:#16191f;color:#d4d8e0;border:none;}
-QDockWidget::title{background:#16191f;padding:4px 8px;border-bottom:1px solid #2e3340;
-    font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8b92a8;}
-QDockWidget::close-button,QDockWidget::float-button{
-    background:#16191f;border:none;padding:2px;}
-QDockWidget::close-button:hover,QDockWidget::float-button:hover{background:#2e3340;}
-QPlainTextEdit#logView{background:#0e1118;border:none;border-top:1px solid #2e3340;
-    color:#8b92a8;font-family:monospace;font-size:11px;padding:4px;}
-QLabel#logTitle{color:#6b7494;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;}
-QCheckBox#logCheck{color:#6b7494;font-size:11px;}
-QCheckBox#logCheck::indicator{width:13px;height:13px;}
-QPushButton#btnToggleLog{min-width:48px;}
-QPushButton#btnToggleLog:checked{background:#1a3a6e;color:#7eb8ff;border:1px solid #2a5298;}
-    )");
+void MainWindow::updateListButtons() {
+    bool hasRows = m_fileTable->rowCount() > 0;
+    m_btnRemove->setEnabled(hasRows && !m_running);
+    m_btnClear->setEnabled(hasRows && !m_running);
 }
 
 // ── Format combo (rebuilt after settings change) ──────────────────────────────
@@ -624,11 +554,6 @@ void MainWindow::addFileRow(const QString &path) {
     bar->setTextVisible(true);
     bar->setFormat("%p%");
     bar->setFixedHeight(18);
-    bar->setStyleSheet(
-        "QProgressBar{background:#16191f;border:1px solid #2e3340;border-radius:3px;"
-        "font-size:10px;color:#8b92a8;}"
-        "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-        "stop:0 #1a4a9e,stop:1 #4a7fc1);border-radius:2px;}");
     m_fileTable->setCellWidget(row, 3, bar);
 
     auto *st = new QTableWidgetItem("Pending");
@@ -643,8 +568,8 @@ void MainWindow::scanDir(const QString &dirPath, bool recursive) {
     for (const QString &e : AUDIO_EXTENSIONS) filters << "*." + e;
 
     QDirIterator::IteratorFlags flags = recursive
-        ? QDirIterator::Subdirectories | QDirIterator::FollowSymlinks
-        : QDirIterator::NoIteratorFlags;
+                                            ? QDirIterator::Subdirectories | QDirIterator::FollowSymlinks
+                                            : QDirIterator::NoIteratorFlags;
 
     QDirIterator it(dirPath, filters, QDir::Files, flags);
     while (it.hasNext())
@@ -668,8 +593,8 @@ void MainWindow::addFolder() {
     if (dir.isEmpty()) return;
 
     auto btn = QMessageBox::question(this, "Add Folder",
-        "Include files in subfolders?",
-        QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+                                     "Include files in subfolders?",
+                                     QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
     if (btn == QMessageBox::Cancel) return;
 
     scanDir(dir, btn == QMessageBox::Yes);
@@ -722,8 +647,8 @@ void MainWindow::dropEvent(QDropEvent *e) {
         bool recursive = false;
         if (hasDir) {
             auto btn = QMessageBox::question(this, "Add Folder",
-                "Include files in subfolders?",
-                QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+                                             "Include files in subfolders?",
+                                             QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
             if (btn == QMessageBox::Cancel) return;
             recursive = (btn == QMessageBox::Yes);
         }
@@ -848,6 +773,8 @@ void MainWindow::startConversion() {
     m_totalProgress->setValue(0);
     m_btnStart->setEnabled(false);
     m_btnCancel->setEnabled(true);
+    m_btnAddFiles->setEnabled(false);
+    m_btnAddFolder->setEnabled(false);
     m_btnRemove->setEnabled(false);
     m_btnClear->setEnabled(false);
 
@@ -906,8 +833,9 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
         m_running = false;
         m_btnStart->setEnabled(true);
         m_btnCancel->setEnabled(false);
-        m_btnRemove->setEnabled(true);
-        m_btnClear->setEnabled(true);
+        m_btnAddFiles->setEnabled(true);
+        m_btnAddFolder->setEnabled(true);
+        updateListButtons();
         int done = m_doneCount.loadAcquire();
         m_statusLabel->setText(
             m_cancelFlag.loadAcquire()
@@ -982,7 +910,7 @@ void MainWindow::onLogLine(int row, QString filename, QString line) {
     // appendHtml is thread-safe via QueuedConnection — we're on the main thread here
     m_logView->appendHtml(
         QString("<span style='color:%1;font-family:monospace;font-size:11px;'>%2</span>")
-        .arg(colour, display.toHtmlEscaped()));
+            .arg(colour, display.toHtmlEscaped()));
 
     if (m_logView->property("autoScroll").toBool()) {
         auto *bar = m_logView->verticalScrollBar();
@@ -1003,8 +931,8 @@ void MainWindow::toggleLog(bool visible) {
 void MainWindow::closeEvent(QCloseEvent *event) {
     if (m_running) {
         auto btn = QMessageBox::question(this, "SonifiQ",
-            "Conversion is in progress. Cancel and quit?",
-            QMessageBox::Yes | QMessageBox::No);
+                                         "Conversion is in progress. Cancel and quit?",
+                                         QMessageBox::Yes | QMessageBox::No);
         if (btn == QMessageBox::No) { event->ignore(); return; }
         m_cancelFlag.storeRelease(1);
         QThreadPool::globalInstance()->waitForDone(4000);

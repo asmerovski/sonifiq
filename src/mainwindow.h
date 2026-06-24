@@ -79,6 +79,7 @@ private slots:
     void toggleLog(bool visible);
     void browseOutputDir();
     void updateFormatOptions(int index);
+    void updateListButtons();
 
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -87,7 +88,6 @@ protected:
 
 private:
     void setupUI();
-    void applyStylesheet();
     void rebuildFormatCombo();
     void addFileRow(const QString &path);
     void scanDir(const QString &dirPath, bool recursive);
