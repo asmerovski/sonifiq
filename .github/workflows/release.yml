@@ -238,7 +238,6 @@ jobs:
       - name: Package AppImage
         env:
           QMAKE: /usr/lib/qt6/bin/qmake
-          OUTPUT: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.AppImage
         run: |
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
