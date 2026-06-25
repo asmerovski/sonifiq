@@ -407,7 +407,17 @@ void MainWindow::setupUI() {
     m_fileTable->verticalHeader()->setVisible(false);
     m_fileTable->setShowGrid(false);
     m_fileTable->verticalHeader()->setDefaultSectionSize(34);
-    root->addWidget(m_fileTable, 1);
+
+    m_emptyLabel = new QLabel(
+        "List is empty.\nAdd files or folders, or drop them here.");
+    m_emptyLabel->setAlignment(Qt::AlignCenter);
+    m_emptyLabel->setEnabled(false); // muted appearance via palette
+
+    m_tableStack = new QStackedWidget();
+    m_tableStack->addWidget(m_emptyLabel); // index 0 — empty state
+    m_tableStack->addWidget(m_fileTable);  // index 1 — table
+    m_tableStack->setCurrentIndex(0);
+    root->addWidget(m_tableStack, 1);
 
     // ── Output destination ────────────────────────────────────────────────────
     auto *destLayout = new QHBoxLayout();
@@ -530,6 +540,8 @@ void MainWindow::updateListButtons() {
     bool hasRows = m_fileTable->rowCount() > 0;
     m_btnRemove->setEnabled(hasRows && !m_running);
     m_btnClear->setEnabled(hasRows && !m_running);
+    m_btnStart->setEnabled(hasRows && !m_running);
+    m_tableStack->setCurrentIndex(hasRows ? 1 : 0);
 }
 
 // ── Format combo (rebuilt after settings change) ──────────────────────────────
