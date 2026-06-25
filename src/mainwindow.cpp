@@ -92,6 +92,10 @@ static const QList<FormatDef> ALL_FORMATS = {
      {"16-bit","24-bit","32-bit float"},
      {"-acodec\npcm_s16be","-acodec\npcm_s24be","-acodec\npcm_f32le"},
      "", false },
+    { "alac", "ALAC (Apple Lossless)", "m4a",
+     {"Default"},
+     {""},
+     "alac", true },
     };
 
 // Returns only the formats the user has enabled in Settings
@@ -934,11 +938,11 @@ void MainWindow::setJobStatus(int row, const QString &status) {
     auto *item = m_fileTable->item(row, 4);
     if (!item) { item = new QTableWidgetItem(); m_fileTable->setItem(row, 4, item); }
     item->setText(status);
-    if      (status.startsWith("✓"))  item->setForeground(QColor("#4caf7d"));
-    else if (status.startsWith("✗"))  item->setForeground(QColor("#e05c5c"));
-    else if (status == "Converting…") item->setForeground(QColor("#f0a030"));
-    else if (status.startsWith("—"))  item->setForeground(QColor("#8b6a6a"));
-    else                               item->setForeground(QColor("#6b7494"));
+    if      (status.startsWith("✓"))  item->setForeground(QColor( 76, 175, 125));
+    else if (status.startsWith("✗"))  item->setForeground(QColor(224,  92,  92));
+    else if (status == "Converting…") item->setForeground(QColor(240, 160,  48));
+    else if (status.startsWith("—"))  item->setForeground(QColor(139, 106, 106));
+    else                               item->setForeground(QColor(107, 116, 148));
 }
 
 // ── Log pane slots ───────────────────────────────────────────────────────────

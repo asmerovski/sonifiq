@@ -27,6 +27,7 @@ QList<FormatEntry> SettingsDialog::allFormats() {
              { "ac3",  "AC3 (Dolby Digital)",      "ac3",         false, true },
              { "mka",  "MKA (Matroska Audio)",     "copy",        false, true },
              { "caf",  "CAF (Apple Core Audio)",   "pcm_s16be",   false, true },
+             { "alac", "ALAC (Apple Lossless)",    "alac",        false, true },
              };
 }
 
