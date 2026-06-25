@@ -598,7 +598,12 @@ void MainWindow::addFileRow(const QString &path) {
     bar->setTextVisible(true);
     bar->setFormat("%p%");
     bar->setFixedHeight(18);
-    m_fileTable->setCellWidget(row, 3, bar);
+
+    auto *barWrapper = new QWidget();
+    auto *barLayout  = new QHBoxLayout(barWrapper);
+    barLayout->setContentsMargins(4, 0, 4, 0);
+    barLayout->addWidget(bar);
+    m_fileTable->setCellWidget(row, 3, barWrapper);
 
     auto *st = new QTableWidgetItem("Pending");
     st->setForeground(QColor("#6b7494"));
@@ -809,7 +814,7 @@ void MainWindow::startConversion() {
         ConversionJob job{ i, input, buildOutputPath(input), "Pending" };
         m_jobs.append(job);
         setJobStatus(i, "Pending");
-        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(i, 3)))
+        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(i, 3)->layout()->itemAt(0)->widget()))
             bar->setValue(0);
     }
 
@@ -847,7 +852,7 @@ void MainWindow::startConversion() {
 // ── Progress / finish callbacks ───────────────────────────────────────────────
 
 void MainWindow::onProgressChanged(int row, int percent) {
-    if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 3)))
+    if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 3)->layout()->itemAt(0)->widget()))
         bar->setValue(percent);
     if (percent > 0 && percent < 100)
         setJobStatus(row, "Converting…");
@@ -856,7 +861,7 @@ void MainWindow::onProgressChanged(int row, int percent) {
 void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
     if (success) {
         setJobStatus(row, "✓ Done");
-        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 3)))
+        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 3)->layout()->itemAt(0)->widget()))
             bar->setValue(100);
         m_doneCount.fetchAndAddAcquire(1);
     } else if (errorMsg == "Cancelled") {
