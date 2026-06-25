@@ -15,14 +15,19 @@
 
 QList<FormatEntry> SettingsDialog::allFormats() {
     return {
-        { "mp3",  "MP3",                "libmp3lame",  false, true },
-        { "m4a",  "AAC (.m4a)",         "aac",         false, true },
-        { "ogg",  "Ogg Vorbis (.ogg)",  "libvorbis",   false, true },
-        { "opus", "Opus (.opus)",        "libopus",     false, true },
-        { "flac", "FLAC",               "flac",        false, true },
-        { "wav",  "WAV (PCM)",          "pcm_s16le",   false, true },
-        { "aiff", "AIFF",               "pcm_s16be",   false, true },
-    };
+             { "mp3",  "MP3",                      "libmp3lame",  false, true },
+             { "m4a",  "AAC (.m4a)",               "aac",         false, true },
+             { "ogg",  "Ogg Vorbis (.ogg)",        "libvorbis",   false, true },
+             { "opus", "Opus (.opus)",              "libopus",     false, true },
+             { "flac", "FLAC",                     "flac",        false, true },
+             { "wav",  "WAV (PCM)",                "pcm_s16le",   false, true },
+             { "aiff", "AIFF",                     "pcm_s16be",   false, true },
+             { "wv",   "WavPack (.wv)",            "wavpack",     false, true },
+             { "mp2",  "MP2",                      "mp2",         false, true },
+             { "ac3",  "AC3 (Dolby Digital)",      "ac3",         false, true },
+             { "mka",  "MKA (Matroska Audio)",     "copy",        false, true },
+             { "caf",  "CAF (Apple Core Audio)",   "pcm_s16be",   false, true },
+             };
 }
 
 // ── Constructor ───────────────────────────────────────────────────────────────
@@ -33,6 +38,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_formats = allFormats();
     loadSettings();
     setupUI();
+
+    // Run codec check automatically on first launch (no saved availability data)
+    QSettings s("SonifiQ", "SonifiQ");
+    if (!s.contains("format_available/" + m_formats.first().id))
+        QMetaObject::invokeMethod(this, &SettingsDialog::runPrecheck, Qt::QueuedConnection);
 }
 
 // ── Load / Save ───────────────────────────────────────────────────────────────
@@ -177,9 +187,16 @@ void SettingsDialog::runPrecheck() {
                 lbl->setText("✗ Not found");
                 lbl->setObjectName("statusErr");
             }
-            // Force stylesheet refresh
             lbl->update();
         }
+
+        // Auto-disable checkbox if codec is missing; re-enable if it's found
+        if (m_checkboxes.contains(f.id)) {
+            auto *cb = m_checkboxes[f.id];
+            cb->setEnabled(avail);
+            if (!avail) cb->setChecked(false);
+        }
+
         if (avail) ++found;
     }
 
@@ -206,4 +223,3 @@ bool SettingsDialog::isFormatEnabled(const QString &id) const {
         if (f.id == id) return f.enabled;
     return true;
 }
-

@@ -25,7 +25,8 @@
 
 // ── Audio extensions accepted as input ───────────────────────────────────────
 static const QStringList AUDIO_EXTENSIONS = {
-    "flac","mp3","ogg","opus","wav","aiff","aif","m4a","aac","wma","ape","wv","mka","tta"
+    "flac","mp3","mp2","ogg","opus","wav","aiff","aif","m4a","aac",
+    "wma","ape","wv","mka","tta","ac3","caf","dts"
 };
 
 // ── Output format definitions (mirrors SettingsDialog::allFormats order) ─────
@@ -70,6 +71,26 @@ static const QList<FormatDef> ALL_FORMATS = {
     { "aiff", "AIFF",          "aiff",
      {"16-bit","24-bit"},
      {"-acodec\npcm_s16be","-acodec\npcm_s24be"},
+     "", false },
+    { "wv",   "WavPack",       "wv",
+     {"High (q=4)","Default (q=3)","Fast (q=1)"},
+     {"-compression_level\n4","-compression_level\n3","-compression_level\n1"},
+     "wavpack", false },
+    { "mp2",  "MP2",           "mp2",
+     {"384 kbps","320 kbps","256 kbps","192 kbps"},
+     {"-b:a\n384k","-b:a\n320k","-b:a\n256k","-b:a\n192k"},
+     "mp2", false },
+    { "ac3",  "AC3 (Dolby Digital)", "ac3",
+     {"640 kbps","448 kbps","384 kbps","256 kbps"},
+     {"-b:a\n640k","-b:a\n448k","-b:a\n384k","-b:a\n256k"},
+     "ac3", false },
+    { "mka",  "MKA (Matroska)", "mka",
+     {"Copy (remux only)"},
+     {"-codec:a\ncopy"},
+     "", false },
+    { "caf",  "CAF (Apple Core Audio)", "caf",
+     {"16-bit","24-bit","32-bit float"},
+     {"-acodec\npcm_s16be","-acodec\npcm_s24be","-acodec\npcm_f32le"},
      "", false },
     };
 
