@@ -3,6 +3,7 @@
 #include <QTableWidget>
 #include <QComboBox>
 #include <QLabel>
+#include <QStackedWidget>
 #include <QPushButton>
 #include <QProgressBar>
 #include <QProcess>
@@ -97,7 +98,9 @@ private:
     QStringList buildFfmpegArgs(const ConversionJob &job);
 
     // Toolbar
-    QTableWidget  *m_fileTable = nullptr;
+    QTableWidget  *m_fileTable   = nullptr;
+    QStackedWidget *m_tableStack = nullptr;
+    QLabel        *m_emptyLabel  = nullptr;
     QPushButton   *m_btnAddFiles = nullptr;
     QPushButton   *m_btnAddFolder = nullptr;
     QPushButton   *m_btnRemove = nullptr;
