@@ -136,6 +136,7 @@ private:
     QAtomicInt            m_cancelFlag  { 0 };
     QAtomicInt            m_doneCount   { 0 };
     QAtomicInt            m_activeCount { 0 };
+    QThreadPool          *m_pool        = nullptr;
     int                   m_totalJobs   = 0;
     bool                  m_running     = false;
 };

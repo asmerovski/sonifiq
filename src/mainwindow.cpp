@@ -306,7 +306,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
 MainWindow::~MainWindow() {
     m_cancelFlag.storeRelease(1);
-    QThreadPool::globalInstance()->waitForDone(3000);
+    if (m_pool) m_pool->waitForDone(3000);
 }
 
 // ── UI Setup ──────────────────────────────────────────────────────────────────
@@ -631,7 +631,7 @@ void MainWindow::addFileRow(const QString &path) {
     m_fileTable->setCellWidget(row, 3, barWrapper);
 
     auto *st = new QTableWidgetItem("Pending");
-    st->setForeground(QColor("#6b7494"));
+    st->setForeground(QColor(107, 116, 148));
     m_fileTable->setItem(row, 4, st);
 }
 
@@ -862,15 +862,19 @@ void MainWindow::startConversion() {
             this, &MainWindow::onLogLine,         Qt::QueuedConnection);
 
     int threads = m_threadsSpin->value();
-    QThreadPool::globalInstance()->setMaxThreadCount(threads);
+    if (!m_pool) m_pool = new QThreadPool(this);
+    m_pool->setMaxThreadCount(threads);
     m_statusLabel->setText(
         QString("Converting %1 file(s) on %2 thread(s)…").arg(total).arg(threads));
+
+    // Set activeCount to total BEFORE submitting any workers to avoid
+    // a race where a fast-finishing job sees remaining==0 mid-queue.
+    m_activeCount.storeRelease(total);
 
     for (const ConversionJob &job : m_jobs) {
         setJobStatus(job.row, "Queued");
         auto *w = new ConversionWorker(job, buildFfmpegArgs(job), m_relay, &m_cancelFlag);
-        m_activeCount.fetchAndAddAcquire(1);
-        QThreadPool::globalInstance()->start(w);
+        m_pool->start(w);
     }
 }
 
@@ -1009,7 +1013,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
                                          QMessageBox::Yes | QMessageBox::No);
         if (btn == QMessageBox::No) { event->ignore(); return; }
         m_cancelFlag.storeRelease(1);
-        QThreadPool::globalInstance()->waitForDone(4000);
+        if (m_pool) m_pool->waitForDone(4000);
     }
     event->accept();
 }
