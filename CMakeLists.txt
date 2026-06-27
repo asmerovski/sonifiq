@@ -101,8 +101,7 @@ set(CPACK_RPM_PACKAGE_VENDOR        "AsmerM")
 # ffmpeg is in RPM Fusion, not the base Fedora repo — use Requires for the
 # Qt runtime (always available) and Recommends for ffmpeg so the package
 # installs cleanly on stock Fedora; users who lack ffmpeg get a runtime error.
-set(CPACK_RPM_PACKAGE_REQUIRES      "qt6-qtbase")
-set(CPACK_RPM_PACKAGE_RECOMMENDS    "ffmpeg")
+set(CPACK_RPM_PACKAGE_REQUIRES      "qt6-qtbase, /usr/bin/ffmpeg")
 set(CPACK_RPM_PACKAGE_URL           "https://github.com/asmerovski/sonifiq")
 set(CPACK_RPM_PACKAGE_PACKAGER      "AsmerM <asmerovski@gmail.com>")
 set(CPACK_RPM_PACKAGE_DESCRIPTION   "${CPACK_PACKAGE_DESCRIPTION}")

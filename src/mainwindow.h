@@ -18,6 +18,7 @@
 #include <QThreadPool>
 #include <QDockWidget>
 #include <QPlainTextEdit>
+#include <QMap>
 #include "settingsdialog.h"
 
 struct ConversionJob {
@@ -78,6 +79,7 @@ private slots:
     void onLogLine(int row, QString filename, QString line);
     void clearLog();
     void toggleLog(bool visible);
+    void showLogPopup(int row);
     void browseOutputDir();
     void updateFormatOptions(int index);
     void updateListButtons();
@@ -132,6 +134,7 @@ private:
 
     // State
     QList<ConversionJob>  m_jobs;
+    QMap<int, QStringList> m_ffmpegLogs;   // per-row raw log lines
     WorkerRelay          *m_relay       = nullptr;
     QAtomicInt            m_cancelFlag  { 0 };
     QAtomicInt            m_doneCount   { 0 };

@@ -22,6 +22,7 @@
 #include <QSettings>
 #include <QTimer>
 #include <QScrollBar>
+#include <QDialog>
 
 // ── Audio extensions accepted as input ───────────────────────────────────────
 static const QStringList AUDIO_EXTENSIONS = {
@@ -554,6 +555,9 @@ void MainWindow::setupUI() {
             this, &MainWindow::updateListButtons);
     connect(m_fileTable->model(), &QAbstractItemModel::rowsRemoved,
             this, &MainWindow::updateListButtons);
+    connect(m_fileTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
+        if (col == 4) showLogPopup(row);  // Status column
+    });
 
     updateFormatOptions(0);
     updateListButtons(); // set initial state (list empty → buttons disabled)
@@ -828,6 +832,7 @@ void MainWindow::startConversion() {
     }
 
     m_jobs.clear();
+    m_ffmpegLogs.clear();
     m_cancelFlag.storeRelease(0);
     m_doneCount.storeRelease(0);
     m_activeCount.storeRelease(0);
@@ -897,11 +902,11 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
         setJobStatus(row, "— Cancelled");
     } else {
         // Show the actual ffmpeg error message inline in the status column.
-        // Full message goes in the tooltip so the user can hover to read it.
+        // Full message goes in the tooltip; popup hint appended.
         QString display = "✗ Error: " + errorMsg;
         setJobStatus(row, display);
         if (auto *item = m_fileTable->item(row, 4))
-            item->setToolTip(errorMsg);
+            item->setToolTip(errorMsg + "\n\nClick to view full ffmpeg log");
     }
 
     int remaining = m_activeCount.fetchAndAddAcquire(-1) - 1;
@@ -942,6 +947,9 @@ void MainWindow::setJobStatus(int row, const QString &status) {
     auto *item = m_fileTable->item(row, 4);
     if (!item) { item = new QTableWidgetItem(); m_fileTable->setItem(row, 4, item); }
     item->setText(status);
+    // Keep any existing error tooltip; for non-error states set a generic hint
+    if (!status.startsWith("✗"))
+        item->setToolTip("Click to view ffmpeg log for this file");
     if      (status.startsWith("✓"))  item->setForeground(QColor( 76, 175, 125));
     else if (status.startsWith("✗"))  item->setForeground(QColor(224,  92,  92));
     else if (status == "Converting…") item->setForeground(QColor(240, 160,  48));
@@ -957,6 +965,9 @@ void MainWindow::setJobStatus(int row, const QString &status) {
 //   Cyan  — lines starting with "Stream mapping" or "Stream #" (codec info)
 //   Grey  — everything else (encoder stats, metadata, etc.)
 void MainWindow::onLogLine(int row, QString filename, QString line) {
+    // Always store the raw line (before filtering) for the popup
+    m_ffmpegLogs[row].append(line);
+
     // Suppress noisy -progress key=value lines from reaching the log
     if (line.startsWith("out_time") || line.startsWith("bitrate=") ||
         line.startsWith("total_size=") || line.startsWith("speed=") ||
@@ -1002,6 +1013,85 @@ void MainWindow::clearLog() {
 
 void MainWindow::toggleLog(bool visible) {
     m_logDock->setVisible(visible);
+}
+
+// ── Per-file log popup ────────────────────────────────────────────────────────
+
+void MainWindow::showLogPopup(int row) {
+    if (row < 0 || row >= m_fileTable->rowCount()) return;
+
+    QString filename = m_fileTable->item(row, 0)
+                           ? m_fileTable->item(row, 0)->toolTip()
+                           : QString("row %1").arg(row);
+    QFileInfo fi(filename);
+
+    const QStringList &lines = m_ffmpegLogs.value(row);
+
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle(QString("ffmpeg log — %1").arg(fi.fileName()));
+    dlg->resize(820, 520);
+
+    auto *layout = new QVBoxLayout(dlg);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(8);
+
+    // Header label
+    auto *header = new QLabel(QString("<b>%1</b>").arg(fi.fileName()));
+    header->setTextFormat(Qt::RichText);
+    layout->addWidget(header);
+
+    // Log viewer
+    auto *view = new QPlainTextEdit(dlg);
+    view->setReadOnly(true);
+    view->setLineWrapMode(QPlainTextEdit::NoWrap);
+    view->setObjectName("logView");  // reuse log styling
+    view->document()->setDefaultStyleSheet(
+        "span { font-family: monospace; font-size: 11px; }");
+
+    if (lines.isEmpty()) {
+        view->setPlainText("No ffmpeg output captured for this file yet.");
+    } else {
+        // Render with the same colour rules as the main log pane
+        auto colourFor = [](const QString &line) -> QString {
+            if (line.contains("Error", Qt::CaseInsensitive) ||
+                line.contains("Invalid") ||
+                line.contains("No such file") ||
+                line.contains("same as Input"))
+                return "#e05c5c";
+            if (line.contains("Warning", Qt::CaseInsensitive) ||
+                line.contains("deprecated", Qt::CaseInsensitive))
+                return "#f0a030";
+            if (line.startsWith("Stream ") || line.startsWith("  Stream"))
+                return "#5bb8d4";
+            if (line.startsWith("Output #") || line.startsWith("Input #"))
+                return "#7eb8ff";
+            return "#8b92a8";
+        };
+
+        QString html;
+        html.reserve(lines.size() * 80);
+        for (const QString &l : lines) {
+            html += QString("<span style='color:%1;font-family:monospace;"
+                            "font-size:11px;'>%2</span><br>")
+                        .arg(colourFor(l), l.toHtmlEscaped());
+        }
+        view->appendHtml(html);
+        // Scroll to top so the user sees the ffmpeg invocation header first
+        view->moveCursor(QTextCursor::Start);
+    }
+
+    layout->addWidget(view, 1);
+
+    // Close button
+    auto *btnClose = new QPushButton("Close");
+    connect(btnClose, &QPushButton::clicked, dlg, &QDialog::accept);
+    auto *btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    btnRow->addWidget(btnClose);
+    layout->addLayout(btnRow);
+
+    dlg->show();
 }
 
 // ── Close guard ───────────────────────────────────────────────────────────────
