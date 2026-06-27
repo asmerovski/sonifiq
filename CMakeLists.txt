@@ -95,11 +95,16 @@ set(CPACK_DEBIAN_PACKAGE_SECTION    "sound")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS    "libc6, libqt6widgets6, ffmpeg")
 
 # RPM ─────────────────────────────────────────────────────────────────────────
-set(CPACK_RPM_PACKAGE_LICENSE       "GPLv3+")
+set(CPACK_RPM_PACKAGE_LICENSE       "GPLv3")
 set(CPACK_RPM_PACKAGE_GROUP         "Applications/Multimedia")
-set(CPACK_RPM_PACKAGE_REQUIRES      "qt6-qtbase, ffmpeg")
+set(CPACK_RPM_PACKAGE_VENDOR        "AsmerM")
+# ffmpeg is in RPM Fusion, not the base Fedora repo — use Requires for the
+# Qt runtime (always available) and Recommends for ffmpeg so the package
+# installs cleanly on stock Fedora; users who lack ffmpeg get a runtime error.
+set(CPACK_RPM_PACKAGE_REQUIRES      "qt6-qtbase")
+set(CPACK_RPM_PACKAGE_RECOMMENDS    "ffmpeg")
 set(CPACK_RPM_PACKAGE_URL           "https://github.com/asmerovski/sonifiq")
-set(CPACK_RPM_PACKAGE_PACKAGER      "asmerovski <asmerovski@gmail.com>")
+set(CPACK_RPM_PACKAGE_PACKAGER      "AsmerM <asmerovski@gmail.com>")
 set(CPACK_RPM_PACKAGE_DESCRIPTION   "${CPACK_PACKAGE_DESCRIPTION}")
 # Exclude dirs owned by filesystem/shared-mime-info to avoid rpmlint E
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
