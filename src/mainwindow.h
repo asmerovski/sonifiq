@@ -83,6 +83,8 @@ private slots:
     void browseOutputDir();
     void updateFormatOptions(int index);
     void updateListButtons();
+    void onHeaderClicked(int column);
+    void showContextMenu(const QPoint &pos);
 
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -94,7 +96,7 @@ private:
     void rebuildFormatCombo();
     void addFileRow(const QString &path);
     void scanDir(const QString &dirPath, bool recursive);
-    void setJobStatus(int row, const QString &status);
+    void setJobStatus(int row, const QString &status, const QString &errorMsg = {});
     void updateOverallProgress();
     QString buildOutputPath(const QString &inputPath);
     QStringList buildFfmpegArgs(const ConversionJob &job);
@@ -135,6 +137,7 @@ private:
     // State
     QList<ConversionJob>  m_jobs;
     QMap<int, QStringList> m_ffmpegLogs;   // per-row raw log lines
+    QMap<int, QString>    m_outputPaths;   // per-row output path (set after job finishes)
     WorkerRelay          *m_relay       = nullptr;
     QAtomicInt            m_cancelFlag  { 0 };
     QAtomicInt            m_doneCount   { 0 };
@@ -142,4 +145,8 @@ private:
     QThreadPool          *m_pool        = nullptr;
     int                   m_totalJobs   = 0;
     bool                  m_running     = false;
+
+    // Sorting state
+    int           m_sortColumn = -1;
+    Qt::SortOrder m_sortOrder  = Qt::AscendingOrder;
 };

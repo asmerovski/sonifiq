@@ -23,6 +23,10 @@
 #include <QTimer>
 #include <QScrollBar>
 #include <QDialog>
+#include <QMenu>
+#include <QDesktopServices>
+#include <QMouseEvent>
+#include <QToolTip>
 
 // ── Audio extensions accepted as input ───────────────────────────────────────
 static const QStringList AUDIO_EXTENSIONS = {
@@ -434,6 +438,15 @@ void MainWindow::setupUI() {
     m_fileTable->setShowGrid(false);
     m_fileTable->verticalHeader()->setDefaultSectionSize(34);
 
+    // ── Sorting: all columns except Format (col 1) ────────────────────────────
+    m_fileTable->setSortingEnabled(false); // manual sort via header click
+    m_fileTable->horizontalHeader()->setSectionsClickable(true);
+    m_fileTable->horizontalHeader()->setSortIndicatorShown(true);
+    m_fileTable->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+
+    // ── Right-click context menu ──────────────────────────────────────────────
+    m_fileTable->setContextMenuPolicy(Qt::CustomContextMenu);
+
     m_emptyLabel = new QLabel(
         "List is empty.\nAdd files or folders, or drop them here.");
     m_emptyLabel->setAlignment(Qt::AlignCenter);
@@ -558,6 +571,10 @@ void MainWindow::setupUI() {
     connect(m_fileTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
         if (col == 4) showLogPopup(row);  // Status column
     });
+    connect(m_fileTable->horizontalHeader(), &QHeaderView::sectionClicked,
+            this, &MainWindow::onHeaderClicked);
+    connect(m_fileTable, &QTableWidget::customContextMenuRequested,
+            this, &MainWindow::showContextMenu);
 
     updateFormatOptions(0);
     updateListButtons(); // set initial state (list empty → buttons disabled)
@@ -693,6 +710,7 @@ void MainWindow::removeSelected() {
 void MainWindow::clearAll() {
     if (m_running) return;
     m_fileTable->setRowCount(0);
+    m_outputPaths.clear();
     m_statusLabel->setText("Ready");
     m_totalProgress->setValue(0);
 }
@@ -833,6 +851,7 @@ void MainWindow::startConversion() {
 
     m_jobs.clear();
     m_ffmpegLogs.clear();
+    m_outputPaths.clear();
     m_cancelFlag.storeRelease(0);
     m_doneCount.storeRelease(0);
     m_activeCount.storeRelease(0);
@@ -897,16 +916,19 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
         setJobStatus(row, "✓ Done");
         if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 3)->layout()->itemAt(0)->widget()))
             bar->setValue(100);
+        // Record the output path so context menu can open target location
+        if (row < m_jobs.size())
+            m_outputPaths[row] = m_jobs[row].outputPath;
         m_doneCount.fetchAndAddAcquire(1);
     } else if (errorMsg == "Cancelled") {
         setJobStatus(row, "— Cancelled");
+        if (row < m_jobs.size())
+            m_outputPaths[row] = m_jobs[row].outputPath;
     } else {
-        // Show the actual ffmpeg error message inline in the status column.
-        // Full message goes in the tooltip; popup hint appended.
-        QString display = "✗ Error: " + errorMsg;
-        setJobStatus(row, display);
-        if (auto *item = m_fileTable->item(row, 4))
-            item->setToolTip(errorMsg + "\n\nClick to view full ffmpeg log");
+        // Status column shows just "Error"; full message is in the tooltip.
+        setJobStatus(row, "✗ Error", errorMsg);
+        if (row < m_jobs.size())
+            m_outputPaths[row] = m_jobs[row].outputPath;
     }
 
     int remaining = m_activeCount.fetchAndAddAcquire(-1) - 1;
@@ -942,14 +964,17 @@ void MainWindow::cancelConversion() {
 
 // ── Status label helper ───────────────────────────────────────────────────────
 
-void MainWindow::setJobStatus(int row, const QString &status) {
+void MainWindow::setJobStatus(int row, const QString &status, const QString &errorMsg) {
     if (row < 0 || row >= m_fileTable->rowCount()) return;
     auto *item = m_fileTable->item(row, 4);
     if (!item) { item = new QTableWidgetItem(); m_fileTable->setItem(row, 4, item); }
     item->setText(status);
-    // Keep any existing error tooltip; for non-error states set a generic hint
-    if (!status.startsWith("✗"))
-        item->setToolTip("Click to view ffmpeg log for this file");
+    if (status.startsWith("✗")) {
+        // Tooltip shows the error message only (no extra hint line)
+        item->setToolTip(errorMsg.isEmpty() ? QString() : errorMsg);
+    } else {
+        item->setToolTip(QString());
+    }
     if      (status.startsWith("✓"))  item->setForeground(QColor( 76, 175, 125));
     else if (status.startsWith("✗"))  item->setForeground(QColor(224,  92,  92));
     else if (status == "Converting…") item->setForeground(QColor(240, 160,  48));
@@ -1092,6 +1117,256 @@ void MainWindow::showLogPopup(int row) {
     layout->addLayout(btnRow);
 
     dlg->show();
+}
+
+// ── Column sorting ───────────────────────────────────────────────────────────
+
+void MainWindow::onHeaderClicked(int column) {
+    // Format column (1) is not sortable
+    if (column == 1) return;
+
+    if (m_sortColumn == column) {
+        m_sortOrder = (m_sortOrder == Qt::AscendingOrder)
+        ? Qt::DescendingOrder : Qt::AscendingOrder;
+    } else {
+        m_sortColumn = column;
+        m_sortOrder  = Qt::AscendingOrder;
+    }
+    m_fileTable->horizontalHeader()->setSortIndicator(m_sortColumn, m_sortOrder);
+
+    int rowCount = m_fileTable->rowCount();
+    if (rowCount < 2) return;
+
+    // ── Strategy: never remove bar widgets from the table mid-sort.
+    // Instead snapshot all row data (items + bar value), sort the snapshot,
+    // then overwrite each row in-place. Bar widgets stay in their slots the
+    // whole time — only their progress value is updated.
+    struct RowSnapshot {
+        int     origRow;
+        QString sortKey;
+        // col 0,1,2,4 items (cloned so we own them independently)
+        QTableWidgetItem *col0 = nullptr; // filename
+        QTableWidgetItem *col1 = nullptr; // format
+        QTableWidgetItem *col2 = nullptr; // duration
+        // col3 = bar widget — handled separately via barValue
+        int               barValue = 0;
+        QTableWidgetItem *col4 = nullptr; // status
+        QString           statusTooltip;
+    };
+
+    QList<RowSnapshot> snap;
+    snap.reserve(rowCount);
+
+    for (int r = 0; r < rowCount; ++r) {
+        RowSnapshot s;
+        s.origRow = r;
+
+        auto cloneCol = [&](int c) -> QTableWidgetItem* {
+            auto *it = m_fileTable->item(r, c);
+            return it ? it->clone() : new QTableWidgetItem();
+        };
+        s.col0 = cloneCol(0);
+        s.col1 = cloneCol(1);
+        s.col2 = cloneCol(2);
+        s.col4 = cloneCol(4);
+        if (auto *it = m_fileTable->item(r, 4))
+            s.statusTooltip = it->toolTip();
+
+        // Read bar value
+        if (auto *w = m_fileTable->cellWidget(r, 3)) {
+            if (auto *bar = w->findChild<QProgressBar*>())
+                s.barValue = bar->value();
+        }
+
+        // Build sort key
+        switch (column) {
+        case 0: s.sortKey = s.col0->text(); break;
+        case 2: s.sortKey = s.col2->text(); break;
+        case 3: s.sortKey = QString::asprintf("%03d", s.barValue); break;
+        case 4: s.sortKey = s.col4->text(); break;
+        default: s.sortKey = m_fileTable->item(r, column)
+                            ? m_fileTable->item(r, column)->text() : QString(); break;
+        }
+
+        snap.append(s);
+    }
+
+    // Sort
+    std::sort(snap.begin(), snap.end(), [this](const RowSnapshot &a, const RowSnapshot &b) {
+        int cmp = QString::localeAwareCompare(a.sortKey, b.sortKey);
+        return m_sortOrder == Qt::AscendingOrder ? cmp < 0 : cmp > 0;
+    });
+
+    // Build old→new index map; remap auxiliary structures
+    QMap<int,int> oldToNew;
+    for (int newR = 0; newR < snap.size(); ++newR)
+        oldToNew[snap[newR].origRow] = newR;
+
+    QMap<int, QStringList> newLogs;
+    for (auto it = m_ffmpegLogs.begin(); it != m_ffmpegLogs.end(); ++it)
+        if (oldToNew.contains(it.key())) newLogs[oldToNew[it.key()]] = it.value();
+    m_ffmpegLogs = newLogs;
+
+    QMap<int, QString> newOutputPaths;
+    for (auto it = m_outputPaths.begin(); it != m_outputPaths.end(); ++it)
+        if (oldToNew.contains(it.key())) newOutputPaths[oldToNew[it.key()]] = it.value();
+    m_outputPaths = newOutputPaths;
+
+    for (auto &job : m_jobs)
+        if (oldToNew.contains(job.row)) job.row = oldToNew[job.row];
+
+    // Overwrite each row in-place — bar widgets never leave their slots
+    for (int newR = 0; newR < snap.size(); ++newR) {
+        const RowSnapshot &s = snap[newR];
+        m_fileTable->setItem(newR, 0, s.col0);
+        m_fileTable->setItem(newR, 1, s.col1);
+        m_fileTable->setItem(newR, 2, s.col2);
+        m_fileTable->setItem(newR, 4, s.col4);
+        if (s.col4) s.col4->setToolTip(s.statusTooltip);
+        // Update bar value in the existing widget
+        if (auto *w = m_fileTable->cellWidget(newR, 3)) {
+            if (auto *bar = w->findChild<QProgressBar*>())
+                bar->setValue(s.barValue);
+        }
+    }
+
+    // Free snapshots that are now owned by the table (setItem transferred them)
+    // Nothing to do — QTableWidget took ownership of the cloned items above.
+}
+
+
+// ── Right-click context menu ──────────────────────────────────────────────────
+
+void MainWindow::showContextMenu(const QPoint &pos) {
+    QList<int> selectedRows;
+    for (auto *item : m_fileTable->selectedItems()) {
+        int r = item->row();
+        if (!selectedRows.contains(r)) selectedRows.append(r);
+    }
+    if (selectedRows.isEmpty() && m_fileTable->rowCount() == 0) return;
+
+    auto *menu = new QMenu(this);
+
+    // ── Open Source Location ──────────────────────────────────────────────────
+    auto *actOpenSrc = menu->addAction("Open Source Location");
+    bool sameSourceDir = false;
+    QString commonSourceDir;
+    if (!selectedRows.isEmpty()) {
+        QSet<QString> sourceDirs;
+        for (int r : selectedRows) {
+            auto *it = m_fileTable->item(r, 0);
+            if (it) {
+                QFileInfo fi(it->data(Qt::UserRole).toString());
+                sourceDirs.insert(fi.absolutePath());
+            }
+        }
+        sameSourceDir = (sourceDirs.size() == 1);
+        if (sameSourceDir) commonSourceDir = *sourceDirs.begin();
+    }
+    if (!sameSourceDir) {
+        actOpenSrc->setEnabled(false);
+        actOpenSrc->setToolTip("Cannot open source location: the selected files are not in the same location");
+    }
+
+    // ── Open Target Location ──────────────────────────────────────────────────
+    auto *actOpenTarget = menu->addAction("Open Target Location");
+    bool targetKnown = false;
+    QString commonTargetDir;
+    if (!selectedRows.isEmpty()) {
+        QSet<QString> targetDirs;
+        for (int r : selectedRows) {
+            auto *statusItem = m_fileTable->item(r, 4);
+            if (!statusItem) continue;
+            QString st = statusItem->text();
+            bool processed = st.startsWith("✓") || st.startsWith("✗") || st.startsWith("—");
+            if (processed && m_outputPaths.contains(r)) {
+                QFileInfo fi(m_outputPaths[r]);
+                targetDirs.insert(fi.absolutePath());
+            }
+        }
+        if (!targetDirs.isEmpty()) {
+            targetKnown = true;
+            commonTargetDir = *targetDirs.begin();
+            // If multiple distinct target dirs, open each
+        }
+    }
+    if (!targetKnown) {
+        actOpenTarget->setEnabled(false);
+        actOpenTarget->setToolTip("Target location not set");
+    }
+
+    // ── Remove from list ──────────────────────────────────────────────────────
+    auto *actRemove = menu->addAction(selectedRows.isEmpty()
+                                          ? "Remove from List" : QString("Remove %1 File(s)").arg(selectedRows.size()));
+    actRemove->setEnabled(!selectedRows.isEmpty() && !m_running);
+
+    menu->addSeparator();
+
+    // ── Clear list ────────────────────────────────────────────────────────────
+    auto *actClear = menu->addAction("Clear List");
+    actClear->setEnabled(m_fileTable->rowCount() > 0 && !m_running);
+
+    // Tooltips on disabled QActions: Qt suppresses them by default.
+    // We install an event filter on the menu that catches MouseMove and shows
+    // QToolTip manually for any disabled action under the cursor.
+    struct MenuTooltipFilter : public QObject {
+        QMenu *menu;
+        explicit MenuTooltipFilter(QMenu *m) : QObject(m), menu(m) {}
+        bool eventFilter(QObject *, QEvent *e) override {
+            if (e->type() == QEvent::MouseMove) {
+                auto *me = static_cast<QMouseEvent*>(e);
+                QAction *act = menu->actionAt(me->pos());
+                if (act && !act->isEnabled() && !act->toolTip().isEmpty())
+                    QToolTip::showText(me->globalPosition().toPoint(), act->toolTip(), menu);
+                else
+                    QToolTip::hideText();
+            }
+            return false;
+        }
+    };
+    menu->installEventFilter(new MenuTooltipFilter(menu));
+
+    QAction *chosen = menu->exec(m_fileTable->viewport()->mapToGlobal(pos));
+    menu->deleteLater();
+
+    if (!chosen) return;
+
+    if (chosen == actOpenSrc && sameSourceDir) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(commonSourceDir));
+    } else if (chosen == actOpenTarget && targetKnown) {
+        // Open all distinct target dirs
+        QSet<QString> dirs;
+        for (int r : selectedRows) {
+            if (m_outputPaths.contains(r)) {
+                dirs.insert(QFileInfo(m_outputPaths[r]).absolutePath());
+            }
+        }
+        for (const QString &d : dirs)
+            QDesktopServices::openUrl(QUrl::fromLocalFile(d));
+    } else if (chosen == actRemove) {
+        QList<int> toRemove = selectedRows;
+        std::sort(toRemove.rbegin(), toRemove.rend());
+        for (int r : toRemove) {
+            // Update m_outputPaths keys for rows that shift up
+            QMap<int, QString> newOut;
+            for (auto it = m_outputPaths.begin(); it != m_outputPaths.end(); ++it) {
+                if (it.key() < r) newOut[it.key()] = it.value();
+                else if (it.key() > r) newOut[it.key() - 1] = it.value();
+                // key == r is removed
+            }
+            m_outputPaths = newOut;
+            QMap<int, QStringList> newLogs;
+            for (auto it = m_ffmpegLogs.begin(); it != m_ffmpegLogs.end(); ++it) {
+                if (it.key() < r) newLogs[it.key()] = it.value();
+                else if (it.key() > r) newLogs[it.key() - 1] = it.value();
+            }
+            m_ffmpegLogs = newLogs;
+            m_fileTable->removeRow(r);
+        }
+        m_statusLabel->setText(QString("%1 file(s) in queue").arg(m_fileTable->rowCount()));
+    } else if (chosen == actClear) {
+        clearAll();
+    }
 }
 
 // ── Close guard ───────────────────────────────────────────────────────────────
