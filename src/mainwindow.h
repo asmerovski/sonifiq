@@ -20,6 +20,10 @@
 #include <QMap>
 #include "settingsdialog.h"
 
+// Custom progress bar that shows success/failed/skipped counts as
+// distinct coloured segments instead of a single uniform fill.
+class SegmentedProgressBar;
+
 struct ConversionJob {
     int     row;
     QString inputPath;
@@ -97,8 +101,8 @@ private:
     bool addFileRow(const QString &path, QStringList *duplicates = nullptr);
     void scanDir(const QString &dirPath, bool recursive, QStringList *duplicates = nullptr);
     void setJobStatus(int row, const QString &status, const QString &errorMsg = {});
-    void updateOverallProgress();
     void updateStats();
+    void computeRowCounts(int &success, int &failed, int &skipped, int &pending) const;
     QString buildOutputPath(const QString &inputPath);
     QStringList buildFfmpegArgs(const ConversionJob &job);
 
@@ -132,7 +136,7 @@ private:
     // Bottom bar
     QPushButton   *m_btnStart = nullptr;
     QPushButton   *m_btnCancel = nullptr;
-    QProgressBar  *m_totalProgress = nullptr;
+    SegmentedProgressBar *m_totalProgress = nullptr;
     QLabel        *m_statusLabel = nullptr;
     QLabel        *m_statsLabel = nullptr;
 

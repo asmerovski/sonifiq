@@ -28,11 +28,83 @@
 #include <QMouseEvent>
 #include <QToolTip>
 #include <QListWidget>
+#include <QPainter>
+#include <QPainterPath>
 
 // ── Audio extensions accepted as input ───────────────────────────────────────
 static const QStringList AUDIO_EXTENSIONS = {
     "flac","mp3","mp2","ogg","opus","wav","aiff","aif","m4a","aac",
     "wma","ape","wv","mka","tta","ac3","caf","dts"
+};
+
+// ── Segmented total-progress bar ──────────────────────────────────────────────
+// Shows successful / failed / skipped counts as distinct coloured segments
+// (rather than a single uniform fill) plus an "x/y" label overlay.
+class SegmentedProgressBar : public QWidget {
+public:
+    explicit SegmentedProgressBar(QWidget *parent = nullptr) : QWidget(parent) {
+        setMinimumHeight(22);
+    }
+
+    // Sets the total job count and clears all segment counts (blank bar).
+    void reset(int total) {
+        m_total = total;
+        m_success = m_failed = m_skipped = 0;
+        update();
+    }
+
+    // Updates the coloured segments. `total` is the denominator (usually the
+    // number of jobs in the current run).
+    void setCounts(int total, int success, int failed, int skipped) {
+        m_total   = total;
+        m_success = success;
+        m_failed  = failed;
+        m_skipped = skipped;
+        update();
+    }
+
+    QSize sizeHint() const override { return QSize(280, 22); }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        QRectF r = rect().adjusted(0, 0, -1, -1);
+        const double radius = 4.0;
+
+        QPainterPath clipPath;
+        clipPath.addRoundedRect(r, radius, radius);
+
+        // Background track
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(60, 64, 76));
+        p.drawPath(clipPath);
+
+        if (m_total > 0) {
+            p.setClipPath(clipPath);
+            double w = r.width();
+            double x = r.left();
+            auto drawSeg = [&](int count, const QColor &color) {
+                if (count <= 0) return;
+                double segW = w * (double(count) / double(m_total));
+                p.fillRect(QRectF(x, r.top(), segW, r.height()), color);
+                x += segW;
+            };
+            drawSeg(m_success, QColor( 76, 175, 125));
+            drawSeg(m_failed,  QColor(224,  92,  92));
+            drawSeg(m_skipped, QColor(200, 150,  60));
+            p.setClipping(false);
+        }
+
+        p.setPen(QColor(235, 235, 235));
+        QString text = m_total > 0
+                           ? QString("%1/%2").arg(m_success + m_failed + m_skipped).arg(m_total)
+                           : QString("0/0");
+        p.drawText(rect(), Qt::AlignCenter, text);
+    }
+
+private:
+    int m_total = 0, m_success = 0, m_failed = 0, m_skipped = 0;
 };
 
 // ── Output format definitions (mirrors SettingsDialog::allFormats order) ─────
@@ -535,11 +607,9 @@ void MainWindow::setupUI() {
     auto *bottom = new QHBoxLayout();
     m_statusLabel = new QLabel("Ready");
     m_statusLabel->setObjectName("statusLabel");
-    m_totalProgress = new QProgressBar();
-    m_totalProgress->setRange(0, 100);
-    m_totalProgress->setValue(0);
-    m_totalProgress->setTextVisible(true);
+    m_totalProgress = new SegmentedProgressBar();
     m_totalProgress->setMinimumWidth(280);
+    m_totalProgress->reset(0);
     m_btnStart  = new QPushButton("Convert");
     m_btnCancel = new QPushButton("Cancel");
     m_btnStart->setObjectName("btnConvert");
@@ -646,19 +716,28 @@ void MainWindow::updateListButtons() {
     updateStats();
 }
 
-// ── Statistics: successful / failed / not processed ──────────────────────────
+// ── Row status counting (shared by stats label and progress bar) ────────────
 
-void MainWindow::updateStats() {
-    if (!m_statsLabel) return;
-    int success = 0, failed = 0, notProcessed = 0;
+void MainWindow::computeRowCounts(int &success, int &failed, int &skipped, int &pending) const {
+    success = failed = skipped = pending = 0;
     int rows = m_fileTable->rowCount();
     for (int r = 0; r < rows; ++r) {
         auto *it = m_fileTable->item(r, 5);
         QString s = it ? it->text() : QString();
-        if (s.startsWith("✓"))      ++success;
+        if      (s.startsWith("✓")) ++success;
         else if (s.startsWith("✗")) ++failed;
-        else                        ++notProcessed;
+        else if (s.startsWith("⏭")) ++skipped;
+        else                         ++pending;
     }
+}
+
+// ── Statistics: successful / failed / not processed ──────────────────────────
+
+void MainWindow::updateStats() {
+    if (!m_statsLabel) return;
+    int success, failed, skipped, pending;
+    computeRowCounts(success, failed, skipped, pending);
+    int notProcessed = skipped + pending;
     m_statsLabel->setText(
         QString("<span style='color:#4caf7d;'>✓ %1 successful</span>"
                 "&nbsp;&nbsp;&nbsp;&nbsp;"
@@ -666,6 +745,11 @@ void MainWindow::updateStats() {
                 "&nbsp;&nbsp;&nbsp;&nbsp;"
                 "<span style='color:#8b92a8;'>○ %3 not processed</span>")
             .arg(success).arg(failed).arg(notProcessed));
+
+    if (m_totalProgress && !m_cancelFlag.loadAcquire()) {
+        int total = m_running ? m_totalJobs : m_fileTable->rowCount();
+        m_totalProgress->setCounts(total, success, failed, skipped);
+    }
 }
 
 // ── Format combo (rebuilt after settings change) ──────────────────────────────
@@ -848,7 +932,7 @@ void MainWindow::clearAll() {
     m_fileTable->setRowCount(0);
     m_outputPaths.clear();
     m_statusLabel->setText("Ready");
-    m_totalProgress->setValue(0);
+    m_totalProgress->reset(0);
 }
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
@@ -1006,8 +1090,7 @@ void MainWindow::startConversion() {
             bar->setValue(0);
     }
 
-    m_totalProgress->setRange(0, total);
-    m_totalProgress->setValue(0);
+    m_totalProgress->reset(total);
     m_btnStart->setEnabled(false);
     m_btnCancel->setEnabled(true);
     m_btnAddFiles->setEnabled(false);
@@ -1075,7 +1158,6 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
     }
 
     int remaining = m_activeCount.fetchAndAddAcquire(-1) - 1;
-    updateOverallProgress();
 
     if (remaining <= 0) {
         m_running = false;
@@ -1092,13 +1174,6 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
     }
 }
 
-void MainWindow::updateOverallProgress() {
-    // While cancelling, keep the bar at the reset value instead of letting
-    // still-finishing jobs push it back up.
-    if (m_cancelFlag.loadAcquire()) return;
-    m_totalProgress->setValue(m_doneCount.loadAcquire());
-}
-
 // ── Cancel ────────────────────────────────────────────────────────────────────
 
 void MainWindow::cancelConversion() {
@@ -1106,7 +1181,7 @@ void MainWindow::cancelConversion() {
     m_cancelFlag.storeRelease(1);
     m_statusLabel->setText("Cancelling…");
     m_btnCancel->setEnabled(false);
-    m_totalProgress->setValue(0);
+    m_totalProgress->reset(m_totalJobs);
 }
 
 // ── Status label helper ───────────────────────────────────────────────────────
