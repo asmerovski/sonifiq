@@ -27,6 +27,7 @@
 #include <QDesktopServices>
 #include <QMouseEvent>
 #include <QToolTip>
+#include <QListWidget>
 
 // ── Audio extensions accepted as input ───────────────────────────────────────
 static const QStringList AUDIO_EXTENSIONS = {
@@ -121,6 +122,28 @@ static QList<FormatDef> enabledFormats() {
 void ConversionWorker::run() {
     if (m_cancel->loadAcquire()) {
         emit m_relay->jobFinished(m_job.row, false, "Cancelled");
+        return;
+    }
+
+    const QString fileName = QFileInfo(m_job.inputPath).fileName();
+
+    // Source and destination resolve to the same file — converting would
+    // overwrite the source, so skip it entirely instead of running ffmpeg.
+    // This check always applies, regardless of the overwrite setting.
+    if (QFileInfo(m_job.inputPath).absoluteFilePath() ==
+        QFileInfo(m_job.outputPath).absoluteFilePath()) {
+        QString reason = "Source and destination file are identical — conversion skipped.";
+        emit m_relay->logLine(m_job.row, fileName, "Skipped: " + reason);
+        emit m_relay->jobFinished(m_job.row, false, "Skipped:" + reason);
+        return;
+    }
+
+    // Destination file already exists and overwrite is disabled — skip it
+    // rather than silently clobbering an existing file.
+    if (!m_job.overwrite && QFileInfo::exists(m_job.outputPath)) {
+        QString reason = "Destination file already exists and overwrite is disabled.";
+        emit m_relay->logLine(m_job.row, fileName, "Skipped: " + reason);
+        emit m_relay->jobFinished(m_job.row, false, "Skipped:" + reason);
         return;
     }
 
@@ -331,8 +354,13 @@ void MainWindow::setupUI() {
     sidebar->setFrameShape(QFrame::NoFrame);
 
     auto *sideWidget = new QWidget();
-    auto *sideLayout = new QVBoxLayout(sideWidget);
-    sideLayout->setContentsMargins(14, 16, 14, 16);
+    auto *sideOuterLayout = new QVBoxLayout(sideWidget);
+    sideOuterLayout->setContentsMargins(10, 12, 10, 12);
+    sideOuterLayout->setSpacing(0);
+
+    auto *sideGroup = new QGroupBox("Conversion Settings");
+    auto *sideLayout = new QVBoxLayout(sideGroup);
+    sideLayout->setContentsMargins(12, 14, 12, 14);
     sideLayout->setSpacing(6);
 
     auto addSideLabel = [&](const QString &text) {
@@ -373,15 +401,9 @@ void MainWindow::setupUI() {
     m_keepCover->setChecked(true);
     sideLayout->addWidget(m_keepCover);
 
-    addSideLabel("Parallel Threads");
-    m_threadsSpin = new QSpinBox();
-    m_threadsSpin->setRange(1, QThread::idealThreadCount());
-    m_threadsSpin->setValue(qMax(1, QThread::idealThreadCount() / 2));
-    m_threadsSpin->setSuffix(QString("  / %1").arg(QThread::idealThreadCount()));
-    m_threadsSpin->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    sideLayout->addWidget(m_threadsSpin);
-
     sideLayout->addStretch();
+    sideOuterLayout->addWidget(sideGroup);
+    sideOuterLayout->addStretch();
     sidebar->setWidget(sideWidget);
     rootLayout->addWidget(sidebar);
 
@@ -420,17 +442,26 @@ void MainWindow::setupUI() {
     toolbar->addWidget(m_btnSettings);
     root->addLayout(toolbar);
 
-    // ── File table: File | Format | Duration | Progress | Status ──────────────
-    m_fileTable = new QTableWidget(0, 5);
-    m_fileTable->setHorizontalHeaderLabels({"File", "Format", "Duration", "Progress", "Status"});
+    // ── File table: File | Source Dir | Format | Duration | Progress | Status ──
+    m_fileTable = new QTableWidget(0, 6);
+    m_fileTable->setHorizontalHeaderLabels(
+        {"File", "Source Dir", "Format", "Duration", "Progress", "Status"});
     m_fileTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_fileTable->horizontalHeader()->setStretchLastSection(false);
-    m_fileTable->setColumnWidth(0, 420);
-    m_fileTable->setColumnWidth(1,  72);
-    m_fileTable->setColumnWidth(2,  82);
-    m_fileTable->setColumnWidth(3, 175);
-    m_fileTable->setColumnWidth(4, 110);
+    m_fileTable->setColumnWidth(0, 340);
+    m_fileTable->setColumnWidth(1, 220);
+    m_fileTable->setColumnWidth(2,  72);
+    m_fileTable->setColumnWidth(3,  82);
+    m_fileTable->setColumnWidth(4, 175);
+    m_fileTable->setColumnWidth(5, 110);
     m_fileTable->horizontalHeader()->setMinimumSectionSize(40);
+
+    // ── Header alignment: centered except File (0) and Source Dir (1) ─────────
+    for (int c = 0; c < m_fileTable->columnCount(); ++c) {
+        if (c == 0 || c == 1) continue;
+        if (auto *h = m_fileTable->horizontalHeaderItem(c))
+            h->setTextAlignment(Qt::AlignCenter);
+    }
     m_fileTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_fileTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_fileTable->setAlternatingRowColors(true);
@@ -458,7 +489,24 @@ void MainWindow::setupUI() {
     m_tableStack->setCurrentIndex(0);
     root->addWidget(m_tableStack, 1);
 
+    // ── Stats line (successful / failed / not processed) ──────────────────────
+    m_statsLabel = new QLabel();
+    m_statsLabel->setObjectName("statsLabel");
+    m_statsLabel->setTextFormat(Qt::RichText);
+    m_statsLabel->setStyleSheet(
+        "QLabel#statsLabel {"
+        "  font-size: 13px; font-weight: 600;"
+        "  padding: 6px 10px;"
+        "  background-color: rgba(127,127,127,18);"
+        "  border-radius: 5px;"
+        "}");
+    root->addWidget(m_statsLabel);
+
     // ── Output destination ────────────────────────────────────────────────────
+    auto *destGroup = new QGroupBox("Destination");
+    auto *destGroupLayout = new QVBoxLayout(destGroup);
+    destGroupLayout->setSpacing(8);
+
     auto *destLayout = new QHBoxLayout();
     m_sameDir = new QCheckBox("Save next to source files");
     m_sameDir->setChecked(true);
@@ -474,7 +522,14 @@ void MainWindow::setupUI() {
     m_btnBrowse->setObjectName("btnSecondary");
     m_btnBrowse->setEnabled(false);
     destLayout->addWidget(m_btnBrowse);
-    root->addLayout(destLayout);
+    destGroupLayout->addLayout(destLayout);
+
+    m_overwriteFiles = new QCheckBox(
+        "Overwrite existing files at destination "
+        "(files with identical source/destination path are always skipped)");
+    destGroupLayout->addWidget(m_overwriteFiles);
+
+    root->addWidget(destGroup);
 
     // ── Bottom bar ────────────────────────────────────────────────────────────
     auto *bottom = new QHBoxLayout();
@@ -569,7 +624,7 @@ void MainWindow::setupUI() {
     connect(m_fileTable->model(), &QAbstractItemModel::rowsRemoved,
             this, &MainWindow::updateListButtons);
     connect(m_fileTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
-        if (col == 4) showLogPopup(row);  // Status column
+        if (col == 5) showLogPopup(row);  // Status column
     });
     connect(m_fileTable->horizontalHeader(), &QHeaderView::sectionClicked,
             this, &MainWindow::onHeaderClicked);
@@ -588,6 +643,29 @@ void MainWindow::updateListButtons() {
     m_btnClear->setEnabled(hasRows && !m_running);
     m_btnStart->setEnabled(hasRows && !m_running);
     m_tableStack->setCurrentIndex(hasRows ? 1 : 0);
+    updateStats();
+}
+
+// ── Statistics: successful / failed / not processed ──────────────────────────
+
+void MainWindow::updateStats() {
+    if (!m_statsLabel) return;
+    int success = 0, failed = 0, notProcessed = 0;
+    int rows = m_fileTable->rowCount();
+    for (int r = 0; r < rows; ++r) {
+        auto *it = m_fileTable->item(r, 5);
+        QString s = it ? it->text() : QString();
+        if (s.startsWith("✓"))      ++success;
+        else if (s.startsWith("✗")) ++failed;
+        else                        ++notProcessed;
+    }
+    m_statsLabel->setText(
+        QString("<span style='color:#4caf7d;'>✓ %1 successful</span>"
+                "&nbsp;&nbsp;&nbsp;&nbsp;"
+                "<span style='color:#e05c5c;'>✗ %2 failed</span>"
+                "&nbsp;&nbsp;&nbsp;&nbsp;"
+                "<span style='color:#8b92a8;'>○ %3 not processed</span>")
+            .arg(success).arg(failed).arg(notProcessed));
 }
 
 // ── Format combo (rebuilt after settings change) ──────────────────────────────
@@ -623,9 +701,12 @@ void MainWindow::openSettings() {
 
 // ── Add single file row (dedup) ───────────────────────────────────────────────
 
-void MainWindow::addFileRow(const QString &path) {
+bool MainWindow::addFileRow(const QString &path, QStringList *duplicates) {
     for (int i = 0; i < m_fileTable->rowCount(); ++i)
-        if (m_fileTable->item(i, 0)->data(Qt::UserRole).toString() == path) return;
+        if (m_fileTable->item(i, 0)->data(Qt::UserRole).toString() == path) {
+            if (duplicates) duplicates->append(QFileInfo(path).fileName());
+            return false;
+        }
 
     QFileInfo fi(path);
     int row = m_fileTable->rowCount();
@@ -634,9 +715,21 @@ void MainWindow::addFileRow(const QString &path) {
     auto *nameItem = new QTableWidgetItem(fi.fileName());
     nameItem->setData(Qt::UserRole, path);
     nameItem->setToolTip(path);
+    nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_fileTable->setItem(row, 0, nameItem);
-    m_fileTable->setItem(row, 1, new QTableWidgetItem(fi.suffix().toUpper()));
-    m_fileTable->setItem(row, 2, new QTableWidgetItem("—"));
+
+    auto *srcDirItem = new QTableWidgetItem(fi.absolutePath());
+    srcDirItem->setToolTip(fi.absolutePath());
+    srcDirItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_fileTable->setItem(row, 1, srcDirItem);
+
+    auto *fmtItem = new QTableWidgetItem(fi.suffix().toUpper());
+    fmtItem->setTextAlignment(Qt::AlignCenter);
+    m_fileTable->setItem(row, 2, fmtItem);
+
+    auto *durItem = new QTableWidgetItem("—");
+    durItem->setTextAlignment(Qt::AlignCenter);
+    m_fileTable->setItem(row, 3, durItem);
 
     auto *bar = new QProgressBar();
     bar->setRange(0, 100);
@@ -649,16 +742,18 @@ void MainWindow::addFileRow(const QString &path) {
     auto *barLayout  = new QHBoxLayout(barWrapper);
     barLayout->setContentsMargins(4, 0, 4, 0);
     barLayout->addWidget(bar);
-    m_fileTable->setCellWidget(row, 3, barWrapper);
+    m_fileTable->setCellWidget(row, 4, barWrapper);
 
     auto *st = new QTableWidgetItem("Pending");
     st->setForeground(QColor(107, 116, 148));
-    m_fileTable->setItem(row, 4, st);
+    st->setTextAlignment(Qt::AlignCenter);
+    m_fileTable->setItem(row, 5, st);
+    return true;
 }
 
 // ── Recursive dir scan ────────────────────────────────────────────────────────
 
-void MainWindow::scanDir(const QString &dirPath, bool recursive) {
+void MainWindow::scanDir(const QString &dirPath, bool recursive, QStringList *duplicates) {
     QStringList filters;
     for (const QString &e : AUDIO_EXTENSIONS) filters << "*." + e;
 
@@ -668,17 +763,56 @@ void MainWindow::scanDir(const QString &dirPath, bool recursive) {
 
     QDirIterator it(dirPath, filters, QDir::Files, flags);
     while (it.hasNext())
-        addFileRow(it.next());
+        addFileRow(it.next(), duplicates);
 }
 
 // ── File / Folder add ─────────────────────────────────────────────────────────
+
+// Scrollable list dialog — used instead of QMessageBox when the list of
+// items could be long (e.g. many duplicate files).
+static void showScrollableList(QWidget *parent, const QString &title,
+                               const QString &intro, const QStringList &items) {
+    QDialog dlg(parent);
+    dlg.setWindowTitle(title);
+    dlg.resize(440, 360);
+
+    auto *layout = new QVBoxLayout(&dlg);
+    if (!intro.isEmpty()) {
+        auto *lbl = new QLabel(intro);
+        lbl->setWordWrap(true);
+        layout->addWidget(lbl);
+    }
+
+    auto *list = new QListWidget();
+    list->addItems(items);
+    list->setSelectionMode(QAbstractItemView::NoSelection);
+    list->setAlternatingRowColors(true);
+    layout->addWidget(list, 1);
+
+    auto *btns = new QDialogButtonBox(QDialogButtonBox::Ok);
+    layout->addWidget(btns);
+    QObject::connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+
+    dlg.exec();
+}
+
+// Show a single summary dialog for any files skipped as duplicates
+static void reportDuplicates(QWidget *parent, const QStringList &dupes) {
+    if (dupes.isEmpty()) return;
+    QString intro = dupes.size() == 1
+                        ? "This file is already in the list and was skipped:"
+                        : QString("%1 file(s) were already in the list and were skipped:").arg(dupes.size());
+    showScrollableList(parent, "Duplicate files skipped", intro, dupes);
+}
 
 void MainWindow::addFiles() {
     QStringList files = QFileDialog::getOpenFileNames(
         this, "Add Audio Files", QDir::homePath(),
         "Audio Files (*.flac *.mp3 *.ogg *.opus *.wav *.aiff *.aif "
         "*.m4a *.aac *.wma *.ape *.wv *.mka *.tta);;All Files (*)");
-    for (const QString &p : files) addFileRow(p);
+    QStringList dupes;
+    for (const QString &p : files) addFileRow(p, &dupes);
+    reportDuplicates(this, dupes);
     m_statusLabel->setText(QString("%1 file(s) in queue").arg(m_fileTable->rowCount()));
 }
 
@@ -692,7 +826,9 @@ void MainWindow::addFolder() {
                                      QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
     if (btn == QMessageBox::Cancel) return;
 
-    scanDir(dir, btn == QMessageBox::Yes);
+    QStringList dupes;
+    scanDir(dir, btn == QMessageBox::Yes, &dupes);
+    reportDuplicates(this, dupes);
     m_statusLabel->setText(QString("%1 file(s) in queue").arg(m_fileTable->rowCount()));
 }
 
@@ -748,13 +884,15 @@ void MainWindow::dropEvent(QDropEvent *e) {
             if (btn == QMessageBox::Cancel) return;
             recursive = (btn == QMessageBox::Yes);
         }
+        QStringList dupes;
         for (const QString &path : paths) {
             QFileInfo fi(path);
             if (fi.isDir())
-                scanDir(path, recursive);
+                scanDir(path, recursive, &dupes);
             else if (AUDIO_EXTENSIONS.contains(fi.suffix().toLower()))
-                addFileRow(path);
+                addFileRow(path, &dupes);
         }
+        reportDuplicates(this, dupes);
         m_statusLabel->setText(
             QString("%1 file(s) in queue").arg(m_fileTable->rowCount()));
     });
@@ -858,12 +996,13 @@ void MainWindow::startConversion() {
     m_totalJobs = total;
     m_running   = true;
 
+    bool overwrite = m_overwriteFiles && m_overwriteFiles->isChecked();
     for (int i = 0; i < total; i++) {
         QString input = m_fileTable->item(i, 0)->data(Qt::UserRole).toString();
-        ConversionJob job{ i, input, buildOutputPath(input), "Pending" };
+        ConversionJob job{ i, input, buildOutputPath(input), "Pending", overwrite };
         m_jobs.append(job);
         setJobStatus(i, "Pending");
-        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(i, 3)->layout()->itemAt(0)->widget()))
+        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(i, 4)->layout()->itemAt(0)->widget()))
             bar->setValue(0);
     }
 
@@ -885,7 +1024,7 @@ void MainWindow::startConversion() {
     connect(m_relay, &WorkerRelay::logLine,
             this, &MainWindow::onLogLine,         Qt::QueuedConnection);
 
-    int threads = m_threadsSpin->value();
+    int threads = SettingsDialog::savedThreadCount();
     if (!m_pool) m_pool = new QThreadPool(this);
     m_pool->setMaxThreadCount(threads);
     m_statusLabel->setText(
@@ -905,7 +1044,7 @@ void MainWindow::startConversion() {
 // ── Progress / finish callbacks ───────────────────────────────────────────────
 
 void MainWindow::onProgressChanged(int row, int percent) {
-    if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 3)->layout()->itemAt(0)->widget()))
+    if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 4)->layout()->itemAt(0)->widget()))
         bar->setValue(percent);
     if (percent > 0 && percent < 100)
         setJobStatus(row, "Converting…");
@@ -914,7 +1053,7 @@ void MainWindow::onProgressChanged(int row, int percent) {
 void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
     if (success) {
         setJobStatus(row, "✓ Done");
-        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 3)->layout()->itemAt(0)->widget()))
+        if (auto *bar = qobject_cast<QProgressBar*>(m_fileTable->cellWidget(row, 4)->layout()->itemAt(0)->widget()))
             bar->setValue(100);
         // Record the output path so context menu can open target location
         if (row < m_jobs.size())
@@ -922,6 +1061,10 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
         m_doneCount.fetchAndAddAcquire(1);
     } else if (errorMsg == "Cancelled") {
         setJobStatus(row, "— Cancelled");
+        if (row < m_jobs.size())
+            m_outputPaths[row] = m_jobs[row].outputPath;
+    } else if (errorMsg.startsWith("Skipped:")) {
+        setJobStatus(row, "⏭ Skipped", errorMsg.mid(QStringLiteral("Skipped:").length()));
         if (row < m_jobs.size())
             m_outputPaths[row] = m_jobs[row].outputPath;
     } else {
@@ -950,6 +1093,9 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
 }
 
 void MainWindow::updateOverallProgress() {
+    // While cancelling, keep the bar at the reset value instead of letting
+    // still-finishing jobs push it back up.
+    if (m_cancelFlag.loadAcquire()) return;
     m_totalProgress->setValue(m_doneCount.loadAcquire());
 }
 
@@ -960,26 +1106,29 @@ void MainWindow::cancelConversion() {
     m_cancelFlag.storeRelease(1);
     m_statusLabel->setText("Cancelling…");
     m_btnCancel->setEnabled(false);
+    m_totalProgress->setValue(0);
 }
 
 // ── Status label helper ───────────────────────────────────────────────────────
 
 void MainWindow::setJobStatus(int row, const QString &status, const QString &errorMsg) {
     if (row < 0 || row >= m_fileTable->rowCount()) return;
-    auto *item = m_fileTable->item(row, 4);
-    if (!item) { item = new QTableWidgetItem(); m_fileTable->setItem(row, 4, item); }
-    item->setText(status);
-    if (status.startsWith("✗")) {
-        // Tooltip shows the error message only (no extra hint line)
-        item->setToolTip(errorMsg.isEmpty() ? QString() : errorMsg);
-    } else {
-        item->setToolTip(QString());
+    auto *item = m_fileTable->item(row, 5);
+    if (!item) {
+        item = new QTableWidgetItem();
+        item->setTextAlignment(Qt::AlignCenter);
+        m_fileTable->setItem(row, 5, item);
     }
+    item->setText(status);
+    // Tooltip shows the reason/error message only (no extra hint line)
+    item->setToolTip(errorMsg.isEmpty() ? QString() : errorMsg);
     if      (status.startsWith("✓"))  item->setForeground(QColor( 76, 175, 125));
     else if (status.startsWith("✗"))  item->setForeground(QColor(224,  92,  92));
     else if (status == "Converting…") item->setForeground(QColor(240, 160,  48));
+    else if (status.startsWith("⏭"))  item->setForeground(QColor(200, 150,  60));
     else if (status.startsWith("—"))  item->setForeground(QColor(139, 106, 106));
     else                               item->setForeground(QColor(107, 116, 148));
+    updateStats();
 }
 
 // ── Log pane slots ───────────────────────────────────────────────────────────
@@ -1006,10 +1155,12 @@ void MainWindow::onLogLine(int row, QString filename, QString line) {
 
     // Pick colour
     QString colour;
-    if (line.contains("Error", Qt::CaseInsensitive) ||
-        line.contains("Invalid") ||
-        line.contains("No such file") ||
-        line.contains("same as Input"))
+    if (line.startsWith("Skipped:"))
+        colour = "#c89632";
+    else if (line.contains("Error", Qt::CaseInsensitive) ||
+             line.contains("Invalid") ||
+             line.contains("No such file") ||
+             line.contains("same as Input"))
         colour = "#e05c5c";
     else if (line.contains("Warning", Qt::CaseInsensitive) ||
              line.contains("deprecated", Qt::CaseInsensitive))
@@ -1079,6 +1230,8 @@ void MainWindow::showLogPopup(int row) {
     } else {
         // Render with the same colour rules as the main log pane
         auto colourFor = [](const QString &line) -> QString {
+            if (line.startsWith("Skipped:"))
+                return "#c89632";
             if (line.contains("Error", Qt::CaseInsensitive) ||
                 line.contains("Invalid") ||
                 line.contains("No such file") ||
@@ -1122,8 +1275,8 @@ void MainWindow::showLogPopup(int row) {
 // ── Column sorting ───────────────────────────────────────────────────────────
 
 void MainWindow::onHeaderClicked(int column) {
-    // Format column (1) is not sortable
-    if (column == 1) return;
+    // Format column (2) is not sortable
+    if (column == 2) return;
 
     if (m_sortColumn == column) {
         m_sortOrder = (m_sortOrder == Qt::AscendingOrder)
@@ -1144,13 +1297,14 @@ void MainWindow::onHeaderClicked(int column) {
     struct RowSnapshot {
         int     origRow;
         QString sortKey;
-        // col 0,1,2,4 items (cloned so we own them independently)
+        // items cloned so we own them independently (col 4 is the bar widget,
+        // handled separately via barValue)
         QTableWidgetItem *col0 = nullptr; // filename
-        QTableWidgetItem *col1 = nullptr; // format
-        QTableWidgetItem *col2 = nullptr; // duration
-        // col3 = bar widget — handled separately via barValue
-        int               barValue = 0;
-        QTableWidgetItem *col4 = nullptr; // status
+        QTableWidgetItem *col1 = nullptr; // source dir
+        QTableWidgetItem *col2 = nullptr; // format
+        QTableWidgetItem *col3 = nullptr; // duration
+        int               barValue = 0;   // col 4 = progress bar
+        QTableWidgetItem *col5 = nullptr; // status
         QString           statusTooltip;
     };
 
@@ -1168,12 +1322,13 @@ void MainWindow::onHeaderClicked(int column) {
         s.col0 = cloneCol(0);
         s.col1 = cloneCol(1);
         s.col2 = cloneCol(2);
-        s.col4 = cloneCol(4);
-        if (auto *it = m_fileTable->item(r, 4))
+        s.col3 = cloneCol(3);
+        s.col5 = cloneCol(5);
+        if (auto *it = m_fileTable->item(r, 5))
             s.statusTooltip = it->toolTip();
 
         // Read bar value
-        if (auto *w = m_fileTable->cellWidget(r, 3)) {
+        if (auto *w = m_fileTable->cellWidget(r, 4)) {
             if (auto *bar = w->findChild<QProgressBar*>())
                 s.barValue = bar->value();
         }
@@ -1181,9 +1336,10 @@ void MainWindow::onHeaderClicked(int column) {
         // Build sort key
         switch (column) {
         case 0: s.sortKey = s.col0->text(); break;
-        case 2: s.sortKey = s.col2->text(); break;
-        case 3: s.sortKey = QString::asprintf("%03d", s.barValue); break;
-        case 4: s.sortKey = s.col4->text(); break;
+        case 1: s.sortKey = s.col1->text(); break;
+        case 3: s.sortKey = s.col3->text(); break;
+        case 4: s.sortKey = QString::asprintf("%03d", s.barValue); break;
+        case 5: s.sortKey = s.col5->text(); break;
         default: s.sortKey = m_fileTable->item(r, column)
                             ? m_fileTable->item(r, column)->text() : QString(); break;
         }
@@ -1221,10 +1377,11 @@ void MainWindow::onHeaderClicked(int column) {
         m_fileTable->setItem(newR, 0, s.col0);
         m_fileTable->setItem(newR, 1, s.col1);
         m_fileTable->setItem(newR, 2, s.col2);
-        m_fileTable->setItem(newR, 4, s.col4);
-        if (s.col4) s.col4->setToolTip(s.statusTooltip);
+        m_fileTable->setItem(newR, 3, s.col3);
+        m_fileTable->setItem(newR, 5, s.col5);
+        if (s.col5) s.col5->setToolTip(s.statusTooltip);
         // Update bar value in the existing widget
-        if (auto *w = m_fileTable->cellWidget(newR, 3)) {
+        if (auto *w = m_fileTable->cellWidget(newR, 4)) {
             if (auto *bar = w->findChild<QProgressBar*>())
                 bar->setValue(s.barValue);
         }
@@ -1275,10 +1432,11 @@ void MainWindow::showContextMenu(const QPoint &pos) {
     if (!selectedRows.isEmpty()) {
         QSet<QString> targetDirs;
         for (int r : selectedRows) {
-            auto *statusItem = m_fileTable->item(r, 4);
+            auto *statusItem = m_fileTable->item(r, 5);
             if (!statusItem) continue;
             QString st = statusItem->text();
-            bool processed = st.startsWith("✓") || st.startsWith("✗") || st.startsWith("—");
+            bool processed = st.startsWith("✓") || st.startsWith("✗") || st.startsWith("—")
+                             || st.startsWith("⏭");
             if (processed && m_outputPaths.contains(r)) {
                 QFileInfo fi(m_outputPaths[r]);
                 targetDirs.insert(fi.absolutePath());

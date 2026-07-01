@@ -4,6 +4,7 @@
 #include <QCheckBox>
 #include <QLabel>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QMap>
 #include <QSettings>
 
@@ -26,6 +27,8 @@ public:
     bool isFormatEnabled(const QString &id) const;
 
     static QList<FormatEntry> allFormats();
+    // Persisted parallel-thread count (used by MainWindow when starting conversions)
+    static int savedThreadCount();
 
 private slots:
     void runPrecheck();
@@ -41,4 +44,5 @@ private:
     QMap<QString, QLabel*>    m_statusLabels;
     QPushButton             *m_btnCheck;
     QLabel                  *m_checkStatus;
+    QSpinBox                *m_threadsSpin = nullptr;
 };

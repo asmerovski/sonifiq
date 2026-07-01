@@ -10,6 +10,7 @@
 #include <QApplication>
 #include <QStyle>
 #include <QLabel>
+#include <QThread>
 
 // ── Static format registry ────────────────────────────────────────────────────
 
@@ -56,6 +57,13 @@ void SettingsDialog::loadSettings() {
     }
 }
 
+int SettingsDialog::savedThreadCount() {
+    QSettings s("SonifiQ", "SonifiQ");
+    int def = qMax(1, QThread::idealThreadCount() / 2);
+    int v = s.value("threads/count", def).toInt();
+    return qBound(1, v, QThread::idealThreadCount());
+}
+
 void SettingsDialog::saveSettings() {
     QSettings s("SonifiQ", "SonifiQ");
     for (auto &f : m_formats) {
@@ -64,6 +72,8 @@ void SettingsDialog::saveSettings() {
         s.setValue("format_enabled/"   + f.id, f.enabled);
         s.setValue("format_available/" + f.id, f.available);
     }
+    if (m_threadsSpin)
+        s.setValue("threads/count", m_threadsSpin->value());
 }
 
 // ── UI Setup ──────────────────────────────────────────────────────────────────
@@ -146,6 +156,33 @@ void SettingsDialog::setupUI() {
     fmtLayout->addStretch();
 
     m_tabs->addTab(fmtWidget, "Output Formats");
+
+    // ── Tab: Performance ──────────────────────────────────────────────────────
+    auto *perfWidget = new QWidget();
+    auto *perfLayout = new QVBoxLayout(perfWidget);
+    perfLayout->setContentsMargins(16, 16, 16, 8);
+    perfLayout->setSpacing(10);
+
+    auto *perfIntro = new QLabel(
+        "Number of files converted in parallel. Higher values use more CPU "
+        "and disk I/O at once.");
+    perfIntro->setWordWrap(true);
+    perfIntro->setObjectName("introLabel");
+    perfLayout->addWidget(perfIntro);
+
+    auto *threadsRow = new QHBoxLayout();
+    auto *threadsLabel = new QLabel("Parallel Threads:");
+    m_threadsSpin = new QSpinBox();
+    m_threadsSpin->setRange(1, QThread::idealThreadCount());
+    m_threadsSpin->setValue(SettingsDialog::savedThreadCount());
+    m_threadsSpin->setSuffix(QString("  / %1").arg(QThread::idealThreadCount()));
+    threadsRow->addWidget(threadsLabel);
+    threadsRow->addWidget(m_threadsSpin);
+    threadsRow->addStretch();
+    perfLayout->addLayout(threadsRow);
+    perfLayout->addStretch();
+
+    m_tabs->addTab(perfWidget, "Performance");
 
     root->addWidget(m_tabs, 1);
 

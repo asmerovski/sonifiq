@@ -11,7 +11,6 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QGroupBox>
-#include <QSpinBox>
 #include <QMutex>
 #include <QAtomicInt>
 #include <QRunnable>
@@ -26,6 +25,7 @@ struct ConversionJob {
     QString inputPath;
     QString outputPath;
     QString status;
+    bool    overwrite = false;
 };
 
 // ── Worker signal relay ───────────────────────────────────────────────────────
@@ -94,10 +94,11 @@ protected:
 private:
     void setupUI();
     void rebuildFormatCombo();
-    void addFileRow(const QString &path);
-    void scanDir(const QString &dirPath, bool recursive);
+    bool addFileRow(const QString &path, QStringList *duplicates = nullptr);
+    void scanDir(const QString &dirPath, bool recursive, QStringList *duplicates = nullptr);
     void setJobStatus(int row, const QString &status, const QString &errorMsg = {});
     void updateOverallProgress();
+    void updateStats();
     QString buildOutputPath(const QString &inputPath);
     QStringList buildFfmpegArgs(const ConversionJob &job);
 
@@ -119,9 +120,9 @@ private:
     QCheckBox     *m_sameDir = nullptr;
     QLineEdit     *m_outputDirEdit = nullptr;
     QPushButton   *m_btnBrowse = nullptr;
+    QCheckBox     *m_overwriteFiles = nullptr;
     QCheckBox     *m_keepTags = nullptr;
     QCheckBox     *m_keepCover = nullptr;
-    QSpinBox      *m_threadsSpin = nullptr;
 
     // Log pane
     QDockWidget   *m_logDock = nullptr;
@@ -133,6 +134,7 @@ private:
     QPushButton   *m_btnCancel = nullptr;
     QProgressBar  *m_totalProgress = nullptr;
     QLabel        *m_statusLabel = nullptr;
+    QLabel        *m_statsLabel = nullptr;
 
     // State
     QList<ConversionJob>  m_jobs;
