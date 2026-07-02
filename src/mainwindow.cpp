@@ -28,14 +28,19 @@
 #include <QMouseEvent>
 #include <QToolTip>
 #include <QListWidget>
+#include <QDialogButtonBox>
 #include <QPainter>
 #include <QPainterPath>
+#include <utility>
 
 // ── Audio extensions accepted as input ───────────────────────────────────────
-static const QStringList AUDIO_EXTENSIONS = {
-    "flac","mp3","mp2","ogg","opus","wav","aiff","aif","m4a","aac",
-    "wma","ape","wv","mka","tta","ac3","caf","dts"
-};
+static const QStringList &audioExtensions() {
+    static const QStringList list = {
+        "flac","mp3","mp2","ogg","opus","wav","aiff","aif","m4a","aac",
+        "wma","ape","wv","mka","tta","ac3","caf","dts"
+    };
+    return list;
+}
 
 // ── Segmented total-progress bar ──────────────────────────────────────────────
 // Shows successful / failed / skipped counts as distinct coloured segments
@@ -118,73 +123,76 @@ struct FormatDef {
     bool        supportsCover;// can this container carry cover art?
 };
 
-static const QList<FormatDef> ALL_FORMATS = {
-    { "mp3",  "MP3",           "mp3",
-     {"320 kbps CBR","256 kbps CBR","192 kbps CBR","128 kbps CBR",
-      "V0 (VBR ~245)","V2 (VBR ~190)","V4 (VBR ~165)"},
-     {"-b:a\n320k", "-b:a\n256k", "-b:a\n192k", "-b:a\n128k",
-      "-q:a\n0",    "-q:a\n2",    "-q:a\n4"},
-     "libmp3lame", true },
-    { "m4a",  "AAC (.m4a)",    "m4a",
-     {"320 kbps","256 kbps","192 kbps","128 kbps"},
-     {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k"},
-     "aac", false },   // m4a: cover art requires -codec:v copy; omit for reliability
-    { "ogg",  "Ogg Vorbis",    "ogg",
-     {"Quality 10 (~500k)","Quality 8 (~256k)","Quality 6 (~192k)",
-      "Quality 4 (~128k)","Quality 2 (~96k)"},
-     {"-q:a\n10","-q:a\n8","-q:a\n6","-q:a\n4","-q:a\n2"},
-     "libvorbis", false },
-    { "opus", "Opus",          "opus",
-     {"320 kbps","256 kbps","192 kbps","128 kbps","96 kbps","64 kbps"},
-     {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k","-b:a\n96k","-b:a\n64k"},
-     "libopus", false },
-    { "flac", "FLAC",          "flac",
-     {"Level 8 (best)","Level 5 (default)","Level 0 (fast)"},
-     {"-compression_level\n8","-compression_level\n5","-compression_level\n0"},
-     "flac", true },
-    { "wav",  "WAV (PCM)",     "wav",
-     {"16-bit","24-bit","32-bit float"},
-     {"-acodec\npcm_s16le","-acodec\npcm_s24le","-acodec\npcm_f32le"},
-     "", false },          // WAV: codec is embedded in qualityArg itself
-    { "aiff", "AIFF",          "aiff",
-     {"16-bit","24-bit"},
-     {"-acodec\npcm_s16be","-acodec\npcm_s24be"},
-     "", false },
-    { "wv",   "WavPack",       "wv",
-     {"High (q=4)","Default (q=3)","Fast (q=1)"},
-     {"-compression_level\n4","-compression_level\n3","-compression_level\n1"},
-     "wavpack", false },
-    { "mp2",  "MP2",           "mp2",
-     {"384 kbps","320 kbps","256 kbps","192 kbps"},
-     {"-b:a\n384k","-b:a\n320k","-b:a\n256k","-b:a\n192k"},
-     "mp2", false },
-    { "ac3",  "AC3 (Dolby Digital)", "ac3",
-     {"640 kbps","448 kbps","384 kbps","256 kbps"},
-     {"-b:a\n640k","-b:a\n448k","-b:a\n384k","-b:a\n256k"},
-     "ac3", false },
-    { "mka",  "MKA (Matroska)", "mka",
-     {"Copy (remux only)"},
-     {"-codec:a\ncopy"},
-     "", false },
-    { "caf",  "CAF (Apple Core Audio)", "caf",
-     {"16-bit","24-bit","32-bit float"},
-     {"-acodec\npcm_s16be","-acodec\npcm_s24be","-acodec\npcm_f32le"},
-     "", false },
-    { "alac", "ALAC (Apple Lossless)", "m4a",
-     {"Default"},
-     {""},
-     "alac", true },
-    };
+static const QList<FormatDef> &allFormatDefs() {
+    static const QList<FormatDef> list = {
+                                           { "mp3",  "MP3",           "mp3",
+                                            {"320 kbps CBR","256 kbps CBR","192 kbps CBR","128 kbps CBR",
+                                             "V0 (VBR ~245)","V2 (VBR ~190)","V4 (VBR ~165)"},
+                                            {"-b:a\n320k", "-b:a\n256k", "-b:a\n192k", "-b:a\n128k",
+                                             "-q:a\n0",    "-q:a\n2",    "-q:a\n4"},
+                                            "libmp3lame", true },
+                                           { "m4a",  "AAC (.m4a)",    "m4a",
+                                            {"320 kbps","256 kbps","192 kbps","128 kbps"},
+                                            {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k"},
+                                            "aac", false },   // m4a: cover art requires -codec:v copy; omit for reliability
+                                           { "ogg",  "Ogg Vorbis",    "ogg",
+                                            {"Quality 10 (~500k)","Quality 8 (~256k)","Quality 6 (~192k)",
+                                             "Quality 4 (~128k)","Quality 2 (~96k)"},
+                                            {"-q:a\n10","-q:a\n8","-q:a\n6","-q:a\n4","-q:a\n2"},
+                                            "libvorbis", false },
+                                           { "opus", "Opus",          "opus",
+                                            {"320 kbps","256 kbps","192 kbps","128 kbps","96 kbps","64 kbps"},
+                                            {"-b:a\n320k","-b:a\n256k","-b:a\n192k","-b:a\n128k","-b:a\n96k","-b:a\n64k"},
+                                            "libopus", false },
+                                           { "flac", "FLAC",          "flac",
+                                            {"Level 8 (best)","Level 5 (default)","Level 0 (fast)"},
+                                            {"-compression_level\n8","-compression_level\n5","-compression_level\n0"},
+                                            "flac", true },
+                                           { "wav",  "WAV (PCM)",     "wav",
+                                            {"16-bit","24-bit","32-bit float"},
+                                            {"-acodec\npcm_s16le","-acodec\npcm_s24le","-acodec\npcm_f32le"},
+                                            "", false },          // WAV: codec is embedded in qualityArg itself
+                                           { "aiff", "AIFF",          "aiff",
+                                            {"16-bit","24-bit"},
+                                            {"-acodec\npcm_s16be","-acodec\npcm_s24be"},
+                                            "", false },
+                                           { "wv",   "WavPack",       "wv",
+                                            {"High (q=4)","Default (q=3)","Fast (q=1)"},
+                                            {"-compression_level\n4","-compression_level\n3","-compression_level\n1"},
+                                            "wavpack", false },
+                                           { "mp2",  "MP2",           "mp2",
+                                            {"384 kbps","320 kbps","256 kbps","192 kbps"},
+                                            {"-b:a\n384k","-b:a\n320k","-b:a\n256k","-b:a\n192k"},
+                                            "mp2", false },
+                                           { "ac3",  "AC3 (Dolby Digital)", "ac3",
+                                            {"640 kbps","448 kbps","384 kbps","256 kbps"},
+                                            {"-b:a\n640k","-b:a\n448k","-b:a\n384k","-b:a\n256k"},
+                                            "ac3", false },
+                                           { "mka",  "MKA (Matroska)", "mka",
+                                            {"Copy (remux only)"},
+                                            {"-codec:a\ncopy"},
+                                            "", false },
+                                           { "caf",  "CAF (Apple Core Audio)", "caf",
+                                            {"16-bit","24-bit","32-bit float"},
+                                            {"-acodec\npcm_s16be","-acodec\npcm_s24be","-acodec\npcm_f32le"},
+                                            "", false },
+                                           { "alac", "ALAC (Apple Lossless)", "m4a",
+                                            {"Default"},
+                                            {""},
+                                            "alac", true },
+                                           };
+    return list;
+}
 
 // Returns only the formats the user has enabled in Settings
 static QList<FormatDef> enabledFormats() {
     QSettings s("SonifiQ", "SonifiQ");
     QList<FormatDef> r;
-    for (const auto &f : ALL_FORMATS) {
+    for (const auto &f : allFormatDefs()) {
         if (s.value("format_enabled/" + f.id, true).toBool())
             r << f;
     }
-    if (r.isEmpty()) return ALL_FORMATS; // safety fallback
+    if (r.isEmpty()) return allFormatDefs(); // safety fallback
     return r;
 }
 
@@ -626,10 +634,10 @@ void MainWindow::setupUI() {
     // ── Log dock widget ───────────────────────────────────────────────────────
     m_logDock = new QDockWidget("ffmpeg Log", this);
     m_logDock->setObjectName("logDock");
-    m_logDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
-    m_logDock->setFeatures(QDockWidget::DockWidgetMovable |
-                           QDockWidget::DockWidgetFloatable |
-                           QDockWidget::DockWidgetClosable);
+    // Locked to the bottom — not floatable, and not movable since there's no
+    // other valid area to drag it into (issue #17).
+    m_logDock->setAllowedAreas(Qt::BottomDockWidgetArea);
+    m_logDock->setFeatures(QDockWidget::DockWidgetClosable);
 
     QWidget *logContainer = new QWidget();
     QVBoxLayout *logLayout = new QVBoxLayout(logContainer);
@@ -674,17 +682,17 @@ void MainWindow::setupUI() {
     connect(m_btnSettings,  &QPushButton::clicked, this, &MainWindow::openSettings);
     connect(m_formatCombo,  QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::updateFormatOptions);
-    connect(m_sameDir, &QCheckBox::toggled, [this](bool checked) {
+    connect(m_sameDir, &QCheckBox::toggled, this, [this](bool checked) {
         m_outputDirEdit->setEnabled(!checked);
         m_btnBrowse->setEnabled(!checked);
     });
     connect(m_btnToggleLog, &QPushButton::toggled, this, &MainWindow::toggleLog);
-    connect(m_logDock, &QDockWidget::visibilityChanged, [this](bool vis) {
+    connect(m_logDock, &QDockWidget::visibilityChanged, this, [this](bool vis) {
         m_btnToggleLog->setChecked(vis);
     });
     connect(btnClearLog, &QPushButton::clicked, this, &MainWindow::clearLog);
     // Auto-scroll: store pointer in log view's property so slot can access it
-    connect(chkAutoScroll, &QCheckBox::toggled, [this](bool on) {
+    connect(chkAutoScroll, &QCheckBox::toggled, this, [this](bool on) {
         m_logView->setProperty("autoScroll", on);
     });
     m_logView->setProperty("autoScroll", true);
@@ -737,14 +745,15 @@ void MainWindow::updateStats() {
     if (!m_statsLabel) return;
     int success, failed, skipped, pending;
     computeRowCounts(success, failed, skipped, pending);
-    int notProcessed = skipped + pending;
     m_statsLabel->setText(
         QString("<span style='color:#4caf7d;'>✓ %1 successful</span>"
                 "&nbsp;&nbsp;&nbsp;&nbsp;"
                 "<span style='color:#e05c5c;'>✗ %2 failed</span>"
                 "&nbsp;&nbsp;&nbsp;&nbsp;"
-                "<span style='color:#8b92a8;'>○ %3 not processed</span>")
-            .arg(success).arg(failed).arg(notProcessed));
+                "<span style='color:#c89632;'>⏭ %3 skipped</span>"
+                "&nbsp;&nbsp;&nbsp;&nbsp;"
+                "<span style='color:#8b92a8;'>○ %4 not processed</span>")
+            .arg(success).arg(failed).arg(skipped).arg(pending));
 
     if (m_totalProgress && !m_cancelFlag.loadAcquire()) {
         int total = m_running ? m_totalJobs : m_fileTable->rowCount();
@@ -755,10 +764,12 @@ void MainWindow::updateStats() {
 // ── Format combo (rebuilt after settings change) ──────────────────────────────
 
 void MainWindow::rebuildFormatCombo() {
-    QString cur = m_formatCombo ? m_formatCombo->currentData().toString() : QString();
+    if (!m_formatCombo) return;
+    QString cur = m_formatCombo->currentData().toString();
     m_formatCombo->blockSignals(true);
     m_formatCombo->clear();
-    for (const auto &f : enabledFormats())
+    const auto fmts = enabledFormats();
+    for (const auto &f : fmts)
         m_formatCombo->addItem(f.label, f.id);
     // Restore previous selection if still available
     int idx = m_formatCombo->findData(cur);
@@ -769,7 +780,7 @@ void MainWindow::rebuildFormatCombo() {
 
 void MainWindow::updateFormatOptions(int index) {
     if (!m_qualityCombo) return;
-    auto fmts = enabledFormats();
+    const auto fmts = enabledFormats();
     if (index < 0 || index >= fmts.size()) return;
     m_qualityCombo->clear();
     m_qualityCombo->addItems(fmts[index].qualities);
@@ -839,7 +850,7 @@ bool MainWindow::addFileRow(const QString &path, QStringList *duplicates) {
 
 void MainWindow::scanDir(const QString &dirPath, bool recursive, QStringList *duplicates) {
     QStringList filters;
-    for (const QString &e : AUDIO_EXTENSIONS) filters << "*." + e;
+    for (const QString &e : audioExtensions()) filters << "*." + e;
 
     QDirIterator::IteratorFlags flags = recursive
                                             ? QDirIterator::Subdirectories | QDirIterator::FollowSymlinks
@@ -890,7 +901,7 @@ static void reportDuplicates(QWidget *parent, const QStringList &dupes) {
 }
 
 void MainWindow::addFiles() {
-    QStringList files = QFileDialog::getOpenFileNames(
+    const QStringList files = QFileDialog::getOpenFileNames(
         this, "Add Audio Files", QDir::homePath(),
         "Audio Files (*.flac *.mp3 *.ogg *.opus *.wav *.aiff *.aif "
         "*.m4a *.aac *.wma *.ape *.wv *.mka *.tta);;All Files (*)");
@@ -918,7 +929,8 @@ void MainWindow::addFolder() {
 
 void MainWindow::removeSelected() {
     QList<int> rows;
-    for (auto *item : m_fileTable->selectedItems()) {
+    const auto selected = m_fileTable->selectedItems();
+    for (auto *item : selected) {
         int r = item->row();
         if (!rows.contains(r)) rows.prepend(r);
     }
@@ -944,7 +956,8 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *e) {
 void MainWindow::dropEvent(QDropEvent *e) {
     // Collect valid local paths — guard against non-file:// URLs from some apps
     QStringList paths;
-    for (const QUrl &url : e->mimeData()->urls()) {
+    const auto urls = e->mimeData()->urls();
+    for (const QUrl &url : urls) {
         QString p = url.toLocalFile();
         if (!p.isEmpty()) paths << p;
     }
@@ -954,7 +967,7 @@ void MainWindow::dropEvent(QDropEvent *e) {
     e->acceptProposedAction();
 
     bool hasDir = false;
-    for (const QString &p : paths)
+    for (const QString &p : std::as_const(paths))
         if (QFileInfo(p).isDir()) { hasDir = true; break; }
 
     // Defer all processing (including the dialog) to after the event loop
@@ -973,7 +986,7 @@ void MainWindow::dropEvent(QDropEvent *e) {
             QFileInfo fi(path);
             if (fi.isDir())
                 scanDir(path, recursive, &dupes);
-            else if (AUDIO_EXTENSIONS.contains(fi.suffix().toLower()))
+            else if (audioExtensions().contains(fi.suffix().toLower()))
                 addFileRow(path, &dupes);
         }
         reportDuplicates(this, dupes);
@@ -991,7 +1004,7 @@ void MainWindow::browseOutputDir() {
 
 QString MainWindow::buildOutputPath(const QString &inputPath) {
     QFileInfo fi(inputPath);
-    auto fmts = enabledFormats();
+    const auto fmts = enabledFormats();
     int idx = m_formatCombo->currentIndex();
     QString ext = (idx >= 0 && idx < fmts.size()) ? fmts[idx].ext : "mp3";
     QString base = fi.completeBaseName() + "." + ext;
@@ -1004,7 +1017,7 @@ QString MainWindow::buildOutputPath(const QString &inputPath) {
 // ── FFmpeg arg builder ────────────────────────────────────────────────────────
 
 QStringList MainWindow::buildFfmpegArgs(const ConversionJob &job) {
-    auto fmts = enabledFormats();
+    const auto fmts = enabledFormats();
     int idx = m_formatCombo->currentIndex();
     if (idx < 0 || idx >= fmts.size()) idx = 0;
     const FormatDef &fmt = fmts[idx];
@@ -1046,7 +1059,8 @@ QStringList MainWindow::buildFfmpegArgs(const ConversionJob &job) {
     int qi = m_qualityCombo->currentIndex();
     if (qi >= 0 && qi < fmt.qualityArgs.size()) {
         // Each qualityArg entry uses '\n' as separator between flag and value
-        for (const QString &token : fmt.qualityArgs[qi].split('\n'))
+        const QStringList tokens = fmt.qualityArgs[qi].split('\n');
+        for (const QString &token : tokens)
             if (!token.isEmpty()) args << token;
     }
 
@@ -1117,7 +1131,7 @@ void MainWindow::startConversion() {
     // a race where a fast-finishing job sees remaining==0 mid-queue.
     m_activeCount.storeRelease(total);
 
-    for (const ConversionJob &job : m_jobs) {
+    for (const ConversionJob &job : std::as_const(m_jobs)) {
         setJobStatus(job.row, "Queued");
         auto *w = new ConversionWorker(job, buildFfmpegArgs(job), m_relay, &m_cancelFlag);
         m_pool->start(w);
@@ -1471,7 +1485,8 @@ void MainWindow::onHeaderClicked(int column) {
 
 void MainWindow::showContextMenu(const QPoint &pos) {
     QList<int> selectedRows;
-    for (auto *item : m_fileTable->selectedItems()) {
+    const auto selected = m_fileTable->selectedItems();
+    for (auto *item : selected) {
         int r = item->row();
         if (!selectedRows.contains(r)) selectedRows.append(r);
     }
