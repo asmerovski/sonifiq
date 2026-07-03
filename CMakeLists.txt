@@ -33,6 +33,8 @@ add_executable(sonifiq
     src/mainwindow.h
     src/settingsdialog.cpp
     src/settingsdialog.h
+    src/thememanager.cpp
+    src/thememanager.h
     src/res.qrc
 )
 

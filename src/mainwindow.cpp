@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "thememanager.h"
 #include <QApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -48,13 +49,15 @@ static const QStringList &audioExtensions() {
 class SegmentedProgressBar : public QWidget {
 public:
     explicit SegmentedProgressBar(QWidget *parent = nullptr) : QWidget(parent) {
-        setMinimumHeight(22);
+        setFixedHeight(14);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
     // Sets the total job count and clears all segment counts (blank bar).
     void reset(int total) {
         m_total = total;
         m_success = m_failed = m_skipped = 0;
+        updateTooltip();
         update();
     }
 
@@ -65,24 +68,37 @@ public:
         m_success = success;
         m_failed  = failed;
         m_skipped = skipped;
+        updateTooltip();
         update();
     }
 
-    QSize sizeHint() const override { return QSize(280, 22); }
+    // The empty "not yet processed" track and its outline follow the active
+    // theme (called at startup and whenever the theme changes), so the bar
+    // never looks mismatched against the surrounding UI. The success/failed/
+    // skipped segment colours themselves are intentionally NOT part of this
+    // — they stay fixed in every theme, as required.
+    void setTrackColors(const QColor &bg, const QColor &border) {
+        m_trackBg = bg;
+        m_trackBorder = border;
+        update();
+    }
+
+    QSize sizeHint() const override { return QSize(280, 14); }
 
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, true);
-        QRectF r = rect().adjusted(0, 0, -1, -1);
-        const double radius = 4.0;
+        QRectF r = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        const double radius = 3.0;
 
         QPainterPath clipPath;
         clipPath.addRoundedRect(r, radius, radius);
 
-        // Background track
+        // Empty track — themed fill + outline so it reads as a control
+        // rather than a stray dark patch, in both light and dark themes.
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(60, 64, 76));
+        p.setBrush(m_trackBg);
         p.drawPath(clipPath);
 
         if (m_total > 0) {
@@ -101,15 +117,23 @@ protected:
             p.setClipping(false);
         }
 
-        p.setPen(QColor(235, 235, 235));
-        QString text = m_total > 0
-                           ? QString("%1/%2").arg(m_success + m_failed + m_skipped).arg(m_total)
-                           : QString("0/0");
-        p.drawText(rect(), Qt::AlignCenter, text);
+        p.setPen(QPen(m_trackBorder, 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(clipPath);
     }
 
 private:
+    void updateTooltip() {
+        int done = m_success + m_failed + m_skipped;
+        setToolTip(m_total > 0
+                       ? QString("%1/%2 processed — ✓ %3  ✗ %4  ⏭ %5")
+                             .arg(done).arg(m_total).arg(m_success).arg(m_failed).arg(m_skipped)
+                       : QString());
+    }
+
     int m_total = 0, m_success = 0, m_failed = 0, m_skipped = 0;
+    QColor m_trackBg     = QColor(60, 64, 76);
+    QColor m_trackBorder = QColor(90, 95, 110);
 };
 
 // ── Output format definitions (mirrors SettingsDialog::allFormats order) ─────
@@ -409,6 +433,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setMinimumSize(920, 640);
     resize(1140, 720);
     setAcceptDrops(true);
+
+    // Probe ffmpeg's available encoders once at startup and persist the
+    // results, so codec-availability data (shown in Settings, and usable
+    // for future filtering) is always fresh — not just after the user
+    // manually opens Settings and clicks "Check Codec Availability".
+    SettingsDialog::probeAndSaveCodecs();
+
     setupUI();
 }
 
@@ -497,11 +528,11 @@ void MainWindow::setupUI() {
     // ── Toolbar ───────────────────────────────────────────────────────────────
     auto *toolbar = new QHBoxLayout();
     toolbar->setSpacing(8);
-    m_btnAddFiles  = new QPushButton("+ Add Files");
-    m_btnAddFolder = new QPushButton("+ Add Folder");
+    m_btnAddFiles  = new QPushButton("Add Files");
+    m_btnAddFolder = new QPushButton("Add Folder");
     m_btnRemove    = new QPushButton("Remove");
     m_btnClear     = new QPushButton("Clear All");
-    m_btnSettings  = new QPushButton("⚙ Settings");
+    m_btnSettings  = new QPushButton("Settings");
     m_btnAddFiles->setObjectName("btnPrimary");
     m_btnAddFolder->setObjectName("btnPrimary");
     m_btnRemove->setObjectName("btnSecondary");
@@ -618,6 +649,7 @@ void MainWindow::setupUI() {
     m_totalProgress = new SegmentedProgressBar();
     m_totalProgress->setMinimumWidth(280);
     m_totalProgress->reset(0);
+    applyProgressBarTheme();
     m_btnStart  = new QPushButton("Convert");
     m_btnCancel = new QPushButton("Cancel");
     m_btnStart->setObjectName("btnConvert");
@@ -790,8 +822,22 @@ void MainWindow::updateFormatOptions(int index) {
 
 void MainWindow::openSettings() {
     SettingsDialog dlg(this);
-    if (dlg.exec() == QDialog::Accepted)
+    int result = dlg.exec();
+    // The theme picker applies live, so re-sync the progress bar's track
+    // colours regardless of Accepted/Cancelled — the theme change itself
+    // isn't undone by Cancel.
+    applyProgressBarTheme();
+    if (result == QDialog::Accepted)
         rebuildFormatCombo();
+}
+
+// Keeps the progress bar's empty-track fill/outline in sync with the active
+// theme. Only the neutral "not yet processed" background is themed here —
+// the success/failed/skipped segment colours are fixed in every theme.
+void MainWindow::applyProgressBarTheme() {
+    if (!m_totalProgress) return;
+    const Theme t = ThemeManager::themeById(ThemeManager::currentThemeId());
+    m_totalProgress->setTrackColors(t.baseBg, t.borderColor);
 }
 
 // ── Add single file row (dedup) ───────────────────────────────────────────────
@@ -852,13 +898,22 @@ void MainWindow::scanDir(const QString &dirPath, bool recursive, QStringList *du
     QStringList filters;
     for (const QString &e : audioExtensions()) filters << "*." + e;
 
-    QDirIterator::IteratorFlags flags = recursive
-                                            ? QDirIterator::Subdirectories | QDirIterator::FollowSymlinks
-                                            : QDirIterator::NoIteratorFlags;
-
-    QDirIterator it(dirPath, filters, QDir::Files, flags);
+    // Matching files directly in this directory (QDir::Files without the
+    // Hidden flag already excludes dotfiles).
+    QDirIterator it(dirPath, filters, QDir::Files);
     while (it.hasNext())
         addFileRow(it.next(), duplicates);
+
+    if (!recursive) return;
+
+    // Recurse manually into non-hidden subdirectories only. Doing this
+    // ourselves (rather than QDirIterator::Subdirectories) makes the
+    // "hidden folders are ignored" behaviour explicit and independent of
+    // Qt-version traversal quirks.
+    QDir dir(dirPath);
+    const QStringList subdirs = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &sub : subdirs)
+        scanDir(dir.filePath(sub), true, duplicates);
 }
 
 // ── File / Folder add ─────────────────────────────────────────────────────────
@@ -911,18 +966,31 @@ void MainWindow::addFiles() {
     m_statusLabel->setText(QString("%1 file(s) in queue").arg(m_fileTable->rowCount()));
 }
 
+// Returns true if dirPath contains at least one non-hidden subdirectory.
+// Hidden (dot-) directories are deliberately excluded (QDir::Hidden is
+// omitted) so a folder that only contains e.g. ".git" isn't treated as
+// having subfolders worth asking about.
+static bool hasVisibleSubdirectories(const QString &dirPath) {
+    QDir dir(dirPath);
+    return !dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty();
+}
+
 void MainWindow::addFolder() {
     QString dir = QFileDialog::getExistingDirectory(
         this, "Add Folder", QDir::homePath());
     if (dir.isEmpty()) return;
 
-    auto btn = QMessageBox::question(this, "Add Folder",
-                                     "Include files in subfolders?",
-                                     QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
-    if (btn == QMessageBox::Cancel) return;
+    bool recursive = false;
+    if (hasVisibleSubdirectories(dir)) {
+        auto btn = QMessageBox::question(this, "Add Folder",
+                                         "Include files in subfolders?",
+                                         QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+        if (btn == QMessageBox::Cancel) return;
+        recursive = (btn == QMessageBox::Yes);
+    }
 
     QStringList dupes;
-    scanDir(dir, btn == QMessageBox::Yes, &dupes);
+    scanDir(dir, recursive, &dupes);
     reportDuplicates(this, dupes);
     m_statusLabel->setText(QString("%1 file(s) in queue").arg(m_fileTable->rowCount()));
 }
@@ -966,15 +1034,17 @@ void MainWindow::dropEvent(QDropEvent *e) {
     // Accept the event BEFORE any dialog — prevents Qt re-entrancy crash
     e->acceptProposedAction();
 
-    bool hasDir = false;
-    for (const QString &p : std::as_const(paths))
-        if (QFileInfo(p).isDir()) { hasDir = true; break; }
+    bool anyHasSubdirs = false;
+    for (const QString &p : std::as_const(paths)) {
+        QFileInfo fi(p);
+        if (fi.isDir() && hasVisibleSubdirectories(p)) { anyHasSubdirs = true; break; }
+    }
 
     // Defer all processing (including the dialog) to after the event loop
     // has fully unwound the drop event — QMessageBox inside dropEvent crashes
-    QTimer::singleShot(0, this, [this, paths, hasDir]() {
+    QTimer::singleShot(0, this, [this, paths, anyHasSubdirs]() {
         bool recursive = false;
-        if (hasDir) {
+        if (anyHasSubdirs) {
             auto btn = QMessageBox::question(this, "Add Folder",
                                              "Include files in subfolders?",
                                              QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);

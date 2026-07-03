@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "thememanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -38,16 +39,20 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("SonifiQ — Settings");
     setMinimumWidth(520);
     m_formats = allFormats();
+    m_originalThemeId = ThemeManager::currentThemeId();
     loadSettings();
     setupUI();
-
-    // Run codec check automatically on first launch (no saved availability data)
-    QSettings s("SonifiQ", "SonifiQ");
-    if (!s.contains("format_available/" + m_formats.first().id))
-        QMetaObject::invokeMethod(this, &SettingsDialog::runPrecheck, Qt::QueuedConnection);
 }
 
 // ── Load / Save ───────────────────────────────────────────────────────────────
+
+void SettingsDialog::reject() {
+    // The theme picker applies live as the user browses it, so on Cancel /
+    // Escape / closing the window, put back whatever theme was active
+    // before this dialog opened rather than leaving the last-previewed one.
+    ThemeManager::applyTheme(m_originalThemeId);
+    QDialog::reject();
+}
 
 void SettingsDialog::loadSettings() {
     QSettings s("SonifiQ", "SonifiQ");
@@ -83,6 +88,37 @@ void SettingsDialog::setupUI() {
     root->setContentsMargins(0, 0, 0, 12);
 
     m_tabs = new QTabWidget();
+
+    // ── Tab: Appearance ──────────────────────────────────────────────────────
+    auto *appearanceWidget = new QWidget();
+    auto *appearanceLayout = new QVBoxLayout(appearanceWidget);
+    appearanceLayout->setContentsMargins(16, 16, 16, 8);
+    appearanceLayout->setSpacing(10);
+
+    auto *appearanceIntro = new QLabel(
+        "Choose a colour theme. Only colours change — layout and icons stay the same.");
+    appearanceIntro->setWordWrap(true);
+    appearanceIntro->setObjectName("introLabel");
+    appearanceLayout->addWidget(appearanceIntro);
+
+    auto *themeRow = new QHBoxLayout();
+    auto *themeLabel = new QLabel("Theme:");
+    m_themeCombo = new QComboBox();
+    for (const Theme &t : ThemeManager::allThemes())
+        m_themeCombo->addItem(t.name, t.id);
+    int curIdx = m_themeCombo->findData(ThemeManager::currentThemeId());
+    m_themeCombo->setCurrentIndex(curIdx >= 0 ? curIdx : 0);
+    themeRow->addWidget(themeLabel);
+    themeRow->addWidget(m_themeCombo);
+    themeRow->addStretch();
+    appearanceLayout->addLayout(themeRow);
+    appearanceLayout->addStretch();
+
+    connect(m_themeCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        ThemeManager::applyTheme(m_themeCombo->itemData(idx).toString());
+    });
+
+    m_tabs->addTab(appearanceWidget, "Appearance");
 
     // ── Tab: Output Formats ───────────────────────────────────────────────────
     auto *fmtWidget = new QWidget();
@@ -198,22 +234,42 @@ void SettingsDialog::setupUI() {
 
 // ── Codec Precheck ────────────────────────────────────────────────────────────
 
-void SettingsDialog::runPrecheck() {
-    m_btnCheck->setEnabled(false);
-    m_checkStatus->setText("Checking…");
-    QApplication::processEvents();
-
-    // Ask ffmpeg to list all encoders, then grep for each codec
+// Shared by the interactive "Check Codec Availability" button and the
+// automatic startup check — runs `ffmpeg -encoders` once and reports which
+// of the given formats' codecs are present in the encoder list.
+static QMap<QString, bool> probeCodecAvailability(const QList<FormatEntry> &formats) {
+    QMap<QString, bool> result;
     QProcess proc;
     proc.setProcessChannelMode(QProcess::MergedChannels);
     proc.start("ffmpeg", {"-encoders", "-v", "quiet"});
     proc.waitForFinished(8000);
     QString encoderList = QString::fromLocal8Bit(proc.readAllStandardOutput());
+    for (const auto &f : formats)
+        result[f.id] = encoderList.contains(f.codec);
+    return result;
+}
+
+// Headless equivalent of runPrecheck() — probes codecs and saves the
+// results straight to QSettings, with no dialog/UI involved. Called once
+// at app startup so availability data is always fresh.
+void SettingsDialog::probeAndSaveCodecs() {
+    const QList<FormatEntry> formats = allFormats();
+    const QMap<QString, bool> availability = probeCodecAvailability(formats);
+    QSettings s("SonifiQ", "SonifiQ");
+    for (const auto &f : formats)
+        s.setValue("format_available/" + f.id, availability.value(f.id, false));
+}
+
+void SettingsDialog::runPrecheck() {
+    m_btnCheck->setEnabled(false);
+    m_checkStatus->setText("Checking…");
+    QApplication::processEvents();
+
+    const QMap<QString, bool> availability = probeCodecAvailability(m_formats);
 
     int found = 0;
     for (auto &f : m_formats) {
-        // A codec line looks like: " A..... libmp3lame ..."
-        bool avail = encoderList.contains(f.codec);
+        bool avail = availability.value(f.id, false);
         f.available = avail;
 
         if (m_statusLabels.contains(f.id)) {

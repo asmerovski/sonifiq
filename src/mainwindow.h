@@ -103,6 +103,7 @@ private:
     void setJobStatus(int row, const QString &status, const QString &errorMsg = {});
     void updateStats();
     void computeRowCounts(int &success, int &failed, int &skipped, int &pending) const;
+    void applyProgressBarTheme();
     QString buildOutputPath(const QString &inputPath);
     QStringList buildFfmpegArgs(const ConversionJob &job);
 
