@@ -34,6 +34,25 @@
 #include <QPainterPath>
 #include <utility>
 
+// Temporarily clears the app-wide theme stylesheet for its lifetime, so
+// file/folder picker dialogs never inherit our custom theme colors. Native
+// OS dialogs are unaffected by qApp's stylesheet regardless, but on Linux
+// setups without a native-dialog backend (no xdg-desktop-portal / GTK
+// integration), Qt silently falls back to its own built-in QFileDialog
+// widget — which, being an ordinary widget tree, WOULD otherwise inherit
+// our theme and look inconsistent with the rest of the OS.
+class ScopedNativeDialogStyle {
+public:
+    ScopedNativeDialogStyle() : m_saved(qApp->styleSheet()) {
+        qApp->setStyleSheet(QString());
+    }
+    ~ScopedNativeDialogStyle() {
+        qApp->setStyleSheet(m_saved);
+    }
+private:
+    QString m_saved;
+};
+
 // ── Audio extensions accepted as input ───────────────────────────────────────
 static const QStringList &audioExtensions() {
     static const QStringList list = {
@@ -956,10 +975,14 @@ static void reportDuplicates(QWidget *parent, const QStringList &dupes) {
 }
 
 void MainWindow::addFiles() {
-    const QStringList files = QFileDialog::getOpenFileNames(
-        this, "Add Audio Files", QDir::homePath(),
-        "Audio Files (*.flac *.mp3 *.ogg *.opus *.wav *.aiff *.aif "
-        "*.m4a *.aac *.wma *.ape *.wv *.mka *.tta);;All Files (*)");
+    QStringList files;
+    {
+        ScopedNativeDialogStyle _noTheme;
+        files = QFileDialog::getOpenFileNames(
+            this, "Add Audio Files", QDir::homePath(),
+            "Audio Files (*.flac *.mp3 *.ogg *.opus *.wav *.aiff *.aif "
+            "*.m4a *.aac *.wma *.ape *.wv *.mka *.tta);;All Files (*)");
+    }
     QStringList dupes;
     for (const QString &p : files) addFileRow(p, &dupes);
     reportDuplicates(this, dupes);
@@ -976,8 +999,11 @@ static bool hasVisibleSubdirectories(const QString &dirPath) {
 }
 
 void MainWindow::addFolder() {
-    QString dir = QFileDialog::getExistingDirectory(
-        this, "Add Folder", QDir::homePath());
+    QString dir;
+    {
+        ScopedNativeDialogStyle _noTheme;
+        dir = QFileDialog::getExistingDirectory(this, "Add Folder", QDir::homePath());
+    }
     if (dir.isEmpty()) return;
 
     bool recursive = false;
@@ -1068,7 +1094,11 @@ void MainWindow::dropEvent(QDropEvent *e) {
 // ── Output path ───────────────────────────────────────────────────────────────
 
 void MainWindow::browseOutputDir() {
-    QString dir = QFileDialog::getExistingDirectory(this, "Select Output Directory");
+    QString dir;
+    {
+        ScopedNativeDialogStyle _noTheme;
+        dir = QFileDialog::getExistingDirectory(this, "Select Output Directory");
+    }
     if (!dir.isEmpty()) m_outputDirEdit->setText(dir);
 }
 

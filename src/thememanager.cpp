@@ -219,6 +219,7 @@ QString ThemeManager::buildStyleSheet(const Theme &t) {
             color: %textColor;
             border: 1px solid %borderColor;
             selection-background-color: %selectionBg;
+            selection-color: %textColor;
         }
 
         QCheckBox { color: %textColor; spacing: 6px; }
@@ -233,13 +234,15 @@ QString ThemeManager::buildStyleSheet(const Theme &t) {
 
         QTableWidget {
             background-color: %baseBg;
+            alternate-background-color: %headerBg;
             color: %textColor;
             gridline-color: %borderColor;
             border: 1px solid %borderColor;
             border-radius: 4px;
             selection-background-color: %selectionBg;
+            selection-color: %textColor;
         }
-        QTableWidget::item:selected { background-color: %selectionBg; }
+        QTableWidget::item:selected { background-color: %selectionBg; color: %textColor; }
         QHeaderView::section {
             background-color: %headerBg;
             color: %textColor;
@@ -290,7 +293,7 @@ QString ThemeManager::buildStyleSheet(const Theme &t) {
             color: %textColor;
             border: 1px solid %borderColor;
         }
-        QMenu::item:selected { background-color: %selectionBg; }
+        QMenu::item:selected { background-color: %selectionBg; color: %textColor; }
 
         QToolTip {
             background-color: %panelBg;
