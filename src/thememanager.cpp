@@ -1,17 +1,30 @@
 #include "thememanager.h"
 #include <QApplication>
 #include <QSettings>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonParseError>
+#include <QSet>
+#include <algorithm>
 
 // ── Built-in themes ────────────────────────────────────────────────────────
 // Two dark, two light. Only colours differ between them — layout, spacing
 // and the segmented total-progress bar / ffmpeg log pane are intentionally
 // left untouched by theming (see mainwindow.cpp).
+//
+// This hard-coded list is only used to seed ~/.local/share/SonifiQ/themes
+// (or the platform equivalent) on first run, and as a last-resort fallback
+// if that folder is ever missing or unreadable. Day-to-day, themes are
+// loaded from the individual JSON files — see loadThemesFromDisk().
 
-QList<Theme> ThemeManager::allThemes() {
+QList<Theme> ThemeManager::builtInThemes() {
     static const QList<Theme> themes = {
         // ── Dark (default) ──────────────────────────────────────────────────
         Theme{
-            "dark", "Dark", true,
+            "dark", "Dark", true, 0,
             QColor(0x23, 0x25, 0x2d),   // windowBg
             QColor(0x2a, 0x2d, 0x37),   // panelBg
             QColor(0x1c, 0x1e, 0x25),   // baseBg
@@ -31,7 +44,7 @@ QList<Theme> ThemeManager::allThemes() {
         },
         // ── Midnight (deeper dark) ──────────────────────────────────────────
         Theme{
-            "midnight", "Midnight", true,
+            "midnight", "Midnight", true, 1,
             QColor(0x14, 0x15, 0x1a),
             QColor(0x1a, 0x1c, 0x22),
             QColor(0x10, 0x11, 0x14),
@@ -51,7 +64,7 @@ QList<Theme> ThemeManager::allThemes() {
         },
         // ── Light ────────────────────────────────────────────────────────────
         Theme{
-            "light", "Light", false,
+            "light", "Light", false, 2,
             QColor(0xf4, 0xf5, 0xf7),
             QColor(0xff, 0xff, 0xff),
             QColor(0xff, 0xff, 0xff),
@@ -71,7 +84,7 @@ QList<Theme> ThemeManager::allThemes() {
         },
         // ── Daylight (warm light) ────────────────────────────────────────────
         Theme{
-            "daylight", "Daylight", false,
+            "daylight", "Daylight", false, 3,
             QColor(0xfa, 0xf7, 0xf0),
             QColor(0xff, 0xff, 0xff),
             QColor(0xff, 0xfd, 0xf9),
@@ -91,7 +104,7 @@ QList<Theme> ThemeManager::allThemes() {
         },
         // ── Pastel Blue (soft light, blue-tinted) ───────────────────────────
         Theme{
-            "pastel_blue", "Pastel Blue", false,
+            "pastel_blue", "Pastel Blue", false, 4,
             QColor(0xee, 0xf3, 0xfa),   // windowBg
             QColor(0xf8, 0xfb, 0xfe),   // panelBg
             QColor(0xff, 0xff, 0xff),   // baseBg
@@ -111,7 +124,7 @@ QList<Theme> ThemeManager::allThemes() {
         },
         // ── Pastel Blue Dark (dark, same blue family as Pastel Blue) ────────
         Theme{
-            "pastel_blue_dark", "Pastel Blue Dark", true,
+            "pastel_blue_dark", "Pastel Blue Dark", true, 5,
             QColor(0x1b, 0x23, 0x30),   // windowBg
             QColor(0x21, 0x2b, 0x3a),   // panelBg
             QColor(0x16, 0x1d, 0x29),   // baseBg
@@ -133,10 +146,143 @@ QList<Theme> ThemeManager::allThemes() {
     return themes;
 }
 
+static QString c(const QColor &color) { return color.name(QColor::HexRgb); }
+
+// ── JSON (de)serialization ──────────────────────────────────────────────────
+
+QJsonObject Theme::toJson() const {
+    QJsonObject o;
+    o["id"]     = id;
+    o["name"]   = name;
+    o["isDark"] = isDark;
+    o["order"]  = order;
+    o["windowBg"]         = c(windowBg);
+    o["panelBg"]          = c(panelBg);
+    o["baseBg"]           = c(baseBg);
+    o["textColor"]        = c(textColor);
+    o["mutedText"]        = c(mutedText);
+    o["borderColor"]      = c(borderColor);
+    o["buttonBg"]         = c(buttonBg);
+    o["buttonHoverBg"]    = c(buttonHoverBg);
+    o["buttonPressedBg"]  = c(buttonPressedBg);
+    o["buttonBorder"]     = c(buttonBorder);
+    o["primaryBg"]        = c(primaryBg);
+    o["primaryHoverBg"]   = c(primaryHoverBg);
+    o["primaryPressedBg"] = c(primaryPressedBg);
+    o["primaryText"]      = c(primaryText);
+    o["selectionBg"]      = c(selectionBg);
+    o["headerBg"]         = c(headerBg);
+    return o;
+}
+
+Theme Theme::fromJson(const QJsonObject &obj, bool *ok) {
+    Theme t;
+    bool valid = true;
+
+    t.id   = obj.value("id").toString();
+    t.name = obj.value("name").toString();
+    if (t.id.trimmed().isEmpty() || t.name.trimmed().isEmpty())
+        valid = false;
+
+    t.isDark = obj.value("isDark").toBool(true);
+    t.order  = obj.value("order").toInt(500);
+
+    // Every colour is required; a missing or unparsable one invalidates the
+    // whole theme rather than silently rendering with magenta placeholders.
+    auto col = [&](const char *key) -> QColor {
+        const QColor parsed(obj.value(key).toString());
+        if (!parsed.isValid()) { valid = false; return QColor(Qt::magenta); }
+        return parsed;
+    };
+    t.windowBg         = col("windowBg");
+    t.panelBg          = col("panelBg");
+    t.baseBg           = col("baseBg");
+    t.textColor        = col("textColor");
+    t.mutedText        = col("mutedText");
+    t.borderColor      = col("borderColor");
+    t.buttonBg         = col("buttonBg");
+    t.buttonHoverBg    = col("buttonHoverBg");
+    t.buttonPressedBg  = col("buttonPressedBg");
+    t.buttonBorder     = col("buttonBorder");
+    t.primaryBg        = col("primaryBg");
+    t.primaryHoverBg   = col("primaryHoverBg");
+    t.primaryPressedBg = col("primaryPressedBg");
+    t.primaryText      = col("primaryText");
+    t.selectionBg      = col("selectionBg");
+    t.headerBg         = col("headerBg");
+
+    if (ok) *ok = valid;
+    return t;
+}
+
+// ── Disk-backed theme storage ───────────────────────────────────────────────
+
+QString ThemeManager::themesDirPath() {
+    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return QDir(base).filePath("themes");
+}
+
+void ThemeManager::ensureThemesDirSeeded() {
+    QDir dir(themesDirPath());
+    if (!dir.exists()) dir.mkpath(".");
+
+    // Only seed an empty folder — never overwrite files that already exist,
+    // so a user's edits (or a previous run's seed) are never clobbered.
+    const bool hasThemeFile =
+        !dir.entryInfoList({"*.json"}, QDir::Files).isEmpty();
+    if (hasThemeFile) return;
+
+    for (const Theme &t : builtInThemes()) {
+        QFile f(dir.filePath(t.id + ".json"));
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) continue;
+        f.write(QJsonDocument(t.toJson()).toJson(QJsonDocument::Indented));
+    }
+}
+
+QList<Theme> ThemeManager::loadThemesFromDisk() {
+    ensureThemesDirSeeded();
+
+    QList<Theme> result;
+    QDir dir(themesDirPath());
+    const auto files = dir.entryInfoList({"*.json"}, QDir::Files, QDir::Name);
+    for (const QFileInfo &fi : files) {
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly)) continue;
+
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
+
+        bool ok = false;
+        Theme t = Theme::fromJson(doc.object(), &ok);
+        if (!ok) continue;
+
+        // Fall back to the filename stem if a theme file omits "id", so a
+        // manually-created file like "sunset.json" still gets a stable id.
+        if (t.id.trimmed().isEmpty()) t.id = fi.completeBaseName();
+        result.append(t);
+    }
+
+    // Keep built-ins in their intended order, then any custom themes by name.
+    std::stable_sort(result.begin(), result.end(), [](const Theme &a, const Theme &b) {
+        if (a.order != b.order) return a.order < b.order;
+        return a.name.localeAwareCompare(b.name) < 0;
+    });
+    return result;
+}
+
+QList<Theme> ThemeManager::allThemes() {
+    QList<Theme> themes = loadThemesFromDisk();
+    if (themes.isEmpty()) themes = builtInThemes(); // themes/ unreadable — don't leave the picker empty
+    return themes;
+}
+
 Theme ThemeManager::themeById(const QString &id) {
-    for (const auto &t : allThemes())
+    const auto themes = allThemes();
+    for (const auto &t : themes)
         if (t.id == id) return t;
-    return allThemes().first(); // "dark"
+    if (!themes.isEmpty()) return themes.first();
+    return builtInThemes().first(); // last-resort fallback: hard-coded "dark"
 }
 
 QString ThemeManager::currentThemeId() {
@@ -144,7 +290,37 @@ QString ThemeManager::currentThemeId() {
     return s.value("appearance/theme", "dark").toString();
 }
 
-static QString c(const QColor &color) { return color.name(QColor::HexRgb); }
+QStringList ThemeManager::missingBuiltInThemeIds() {
+    const auto onDisk = loadThemesFromDisk();
+    QSet<QString> presentIds;
+    for (const Theme &t : onDisk) presentIds.insert(t.id);
+
+    QStringList missing;
+    for (const Theme &t : builtInThemes())
+        if (!presentIds.contains(t.id)) missing << t.id;
+    return missing;
+}
+
+int ThemeManager::restoreMissingBuiltInThemes() {
+    QDir dir(themesDirPath());
+    if (!dir.exists()) dir.mkpath(".");
+
+    const QStringList missing = missingBuiltInThemeIds();
+    if (missing.isEmpty()) return 0;
+
+    int restored = 0;
+    for (const Theme &t : builtInThemes()) {
+        if (!missing.contains(t.id)) continue;
+        QFile f(dir.filePath(t.id + ".json"));
+        // Deliberately does not truncate an existing file of the same name —
+        // missingBuiltInThemeIds() already excludes ids that resolved from
+        // an existing file, so this only ever creates brand-new files.
+        if (f.exists() || !f.open(QIODevice::WriteOnly)) continue;
+        f.write(QJsonDocument(t.toJson()).toJson(QJsonDocument::Indented));
+        ++restored;
+    }
+    return restored;
+}
 
 QString ThemeManager::buildStyleSheet(const Theme &t) {
     return QString(R"(
@@ -202,6 +378,21 @@ QString ThemeManager::buildStyleSheet(const Theme &t) {
         }
         QPushButton#btnPrimary:hover { background-color: %buttonHoverBg; }
 
+        /* Small inline "command link" style — e.g. "Open destination folder".
+           No border/background of its own; underline comes from the button's
+           font (set in code) since QSS text-decoration isn't reliable across
+           platforms for QPushButton. */
+        QPushButton#linkButton {
+            background: transparent;
+            border: none;
+            padding: 0px;
+            text-align: left;
+            color: %primaryBg;
+        }
+        QPushButton#linkButton:hover    { color: %primaryHoverBg; }
+        QPushButton#linkButton:pressed  { color: %primaryPressedBg; }
+        QPushButton#linkButton:disabled { color: %mutedText; }
+
         QLineEdit, QSpinBox, QComboBox {
             background-color: %baseBg;
             color: %textColor;
@@ -251,6 +442,38 @@ QString ThemeManager::buildStyleSheet(const Theme &t) {
             border-bottom: 1px solid %borderColor;
             padding: 4px 6px;
         }
+
+        /* QListView/QTreeView cover the file/folder picker dialogs (sidebar
+           and file browsing area — QFileDialog is forced to the themed Qt
+           widget rather than a native OS dialog; see addFiles()/addFolder()/
+           browseOutputDir() in mainwindow.cpp) as well as any other plain
+           list/tree views. Declared before QListWidget below so the more
+           specific QListWidget rule (used by the duplicate-files popup)
+           still wins for that widget on the cascade tie. */
+        QListView, QTreeView {
+            background-color: %baseBg;
+            color: %textColor;
+            border: 1px solid %borderColor;
+            border-radius: 4px;
+            selection-background-color: %selectionBg;
+            selection-color: %textColor;
+        }
+        QListView::item:selected, QTreeView::item:selected {
+            background-color: %selectionBg;
+            color: %textColor;
+        }
+
+        /* Toolbar icons in the file/folder picker (back/forward/parent dir/
+           new folder/list-or-detail view toggle). */
+        QToolButton {
+            background-color: transparent;
+            color: %textColor;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 3px;
+        }
+        QToolButton:hover   { background-color: %buttonHoverBg; border-color: %buttonBorder; }
+        QToolButton:pressed { background-color: %buttonPressedBg; }
 
         QListWidget {
             background-color: %baseBg;
@@ -334,13 +557,40 @@ QString ThemeManager::buildStyleSheet(const Theme &t) {
 }
 
 void ThemeManager::applyTheme(const QString &id) {
-    const Theme t = themeById(id);
-    if (auto *app = qApp) app->setStyleSheet(buildStyleSheet(t));
+    const Theme t = themeById(id); // resolves to a safe fallback if id is unknown/missing
 
+    // Always persist the (resolved) choice, even while theming is switched
+    // off, so whatever was picked is what re-appears the moment it's
+    // switched back on.
     QSettings s("SonifiQ", "SonifiQ");
     s.setValue("appearance/theme", t.id);
+
+    if (!themingEnabled()) {
+        if (auto *app = qApp) app->setStyleSheet(QString());
+        return;
+    }
+    if (auto *app = qApp) app->setStyleSheet(buildStyleSheet(t));
 }
 
 void ThemeManager::applySavedTheme() {
     applyTheme(currentThemeId());
+}
+
+bool ThemeManager::themingEnabled() {
+    QSettings s("SonifiQ", "SonifiQ");
+    return s.value("appearance/themingEnabled", true).toBool();
+}
+
+void ThemeManager::setThemingEnabled(bool enabled) {
+    QSettings s("SonifiQ", "SonifiQ");
+    s.setValue("appearance/themingEnabled", enabled);
+
+    if (!enabled) {
+        // Follow the system look: no stylesheet at all, so Qt's default
+        // style/palette for this platform takes over — the same thing any
+        // unthemed Qt app gets.
+        if (auto *app = qApp) app->setStyleSheet(QString());
+        return;
+    }
+    if (auto *app = qApp) app->setStyleSheet(buildStyleSheet(themeById(currentThemeId())));
 }

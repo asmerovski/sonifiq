@@ -85,6 +85,7 @@ private slots:
     void toggleLog(bool visible);
     void showLogPopup(int row);
     void browseOutputDir();
+    void openDestinationDir();
     void updateFormatOptions(int index);
     void updateListButtons();
     void onHeaderClicked(int column);
@@ -99,6 +100,7 @@ private:
     void setupUI();
     void rebuildFormatCombo();
     bool addFileRow(const QString &path, QStringList *duplicates = nullptr);
+    void probeDuration(const QString &path);
     void scanDir(const QString &dirPath, bool recursive, QStringList *duplicates = nullptr);
     void setJobStatus(int row, const QString &status, const QString &errorMsg = {});
     void updateStats();
@@ -106,6 +108,7 @@ private:
     void applyProgressBarTheme();
     QString buildOutputPath(const QString &inputPath);
     QStringList buildFfmpegArgs(const ConversionJob &job);
+    void updateDestLinkState();
 
     // Toolbar
     QTableWidget  *m_fileTable   = nullptr;
@@ -125,6 +128,7 @@ private:
     QCheckBox     *m_sameDir = nullptr;
     QLineEdit     *m_outputDirEdit = nullptr;
     QPushButton   *m_btnBrowse = nullptr;
+    QPushButton   *m_btnOpenDestDir = nullptr;
     QCheckBox     *m_overwriteFiles = nullptr;
     QCheckBox     *m_keepTags = nullptr;
     QCheckBox     *m_keepCover = nullptr;

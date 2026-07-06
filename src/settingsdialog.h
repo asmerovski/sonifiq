@@ -42,6 +42,7 @@ public slots:
 
 private slots:
     void runPrecheck();
+    void restoreDefaultThemes();
 
 private:
     void setupUI();
@@ -55,6 +56,8 @@ private:
     QPushButton             *m_btnCheck;
     QLabel                  *m_checkStatus;
     QSpinBox                *m_threadsSpin = nullptr;
+    QCheckBox                *m_themingEnabledCheck = nullptr;
     QComboBox               *m_themeCombo  = nullptr;
     QString                  m_originalThemeId;
+    bool                     m_originalThemingEnabled = true;
 };

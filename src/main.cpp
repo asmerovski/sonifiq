@@ -6,7 +6,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("SonifiQ");
     app.setApplicationVersion("1.2.1");
-    app.setOrganizationName("AppSMall");
+    app.setOrganizationName("AppsMall");
     app.setWindowIcon(QIcon(":/icons/res/icons/app.svg"));
 
     ThemeManager::applySavedTheme();
