@@ -1,5 +1,4 @@
 #include "settingsdialog.h"
-#include "thememanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -12,11 +11,7 @@
 #include <QStyle>
 #include <QLabel>
 #include <QThread>
-#include <QDesktopServices>
-#include <QUrl>
-#include <QDir>
 #include <QFont>
-#include <QMessageBox>
 
 // ── Static format registry ────────────────────────────────────────────────────
 
@@ -44,25 +39,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("SonifiQ — Settings");
     setMinimumWidth(520);
     m_formats = allFormats();
-    m_originalThemeId = ThemeManager::currentThemeId();
-    m_originalThemingEnabled = ThemeManager::themingEnabled();
     loadSettings();
     setupUI();
 }
 
 // ── Load / Save ───────────────────────────────────────────────────────────────
-
-void SettingsDialog::reject() {
-    // The theme picker (and the theming on/off switch) apply live as the
-    // user browses them, so on Cancel / Escape / closing the window, put
-    // back whatever was active before this dialog opened. Restore the theme
-    // id first, then the enabled flag — that order means if theming ends up
-    // enabled, it re-applies with the correct (already-restored) id in one
-    // step instead of flashing the last-previewed theme first.
-    ThemeManager::applyTheme(m_originalThemeId);
-    ThemeManager::setThemingEnabled(m_originalThemingEnabled);
-    QDialog::reject();
-}
 
 void SettingsDialog::loadSettings() {
     QSettings s("SonifiQ", "SonifiQ");
@@ -98,86 +79,6 @@ void SettingsDialog::setupUI() {
     root->setContentsMargins(0, 0, 0, 12);
 
     m_tabs = new QTabWidget();
-
-    // ── Tab: Appearance ──────────────────────────────────────────────────────
-    auto *appearanceWidget = new QWidget();
-    auto *appearanceLayout = new QVBoxLayout(appearanceWidget);
-    appearanceLayout->setContentsMargins(16, 16, 16, 8);
-    appearanceLayout->setSpacing(10);
-
-    auto *appearanceIntro = new QLabel(
-        "Choose a colour theme. Only colours change — layout and icons stay the same.");
-    appearanceIntro->setWordWrap(true);
-    appearanceIntro->setObjectName("introLabel");
-    appearanceLayout->addWidget(appearanceIntro);
-
-    m_themingEnabledCheck = new QCheckBox("Use custom theme (beta)");
-    m_themingEnabledCheck->setToolTip(
-        "Unchecked: SonifiQ follows your system's default look "
-        "(whatever light/dark appearance your desktop normally gives a Qt app), "
-        "instead of the colour theme picked below.");
-    m_themingEnabledCheck->setChecked(ThemeManager::themingEnabled());
-    appearanceLayout->addWidget(m_themingEnabledCheck);
-
-    auto *themeRow = new QHBoxLayout();
-    auto *themeLabel = new QLabel("Theme:");
-    m_themeCombo = new QComboBox();
-    for (const Theme &t : ThemeManager::allThemes())
-        m_themeCombo->addItem(t.name, t.id);
-    int curIdx = m_themeCombo->findData(ThemeManager::currentThemeId());
-    m_themeCombo->setCurrentIndex(curIdx >= 0 ? curIdx : 0);
-    m_themeCombo->setEnabled(m_themingEnabledCheck->isChecked());
-    themeRow->addWidget(themeLabel);
-    themeRow->addWidget(m_themeCombo);
-    themeRow->addStretch();
-    appearanceLayout->addLayout(themeRow);
-
-    // Themes are individual JSON files on disk — surface the folder so
-    // users can edit a built-in theme or drop in their own.
-    auto *btnOpenThemesDir = new QPushButton("Open themes folder");
-    btnOpenThemesDir->setObjectName("linkButton");
-    btnOpenThemesDir->setFlat(true);
-    btnOpenThemesDir->setCursor(Qt::PointingHandCursor);
-    QFont linkFont = btnOpenThemesDir->font();
-    linkFont.setUnderline(true);
-    btnOpenThemesDir->setFont(linkFont);
-    btnOpenThemesDir->setToolTip(
-        "Each theme is a .json file here. Edit one or add your own — "
-        "new themes appear next time this dialog opens.");
-
-    // Lets a user get back any built-in theme (Dark, Light, ...) whose .json
-    // file was deleted from the themes folder, without touching anything
-    // else in there (custom themes, or built-ins that were only edited).
-    auto *btnRestoreThemes = new QPushButton("Restore Default Themes");
-    btnRestoreThemes->setObjectName("btnSecondary");
-    btnRestoreThemes->setToolTip(
-        "Recreates the .json file for any built-in theme that's been "
-        "deleted from the themes folder. Edited or custom themes are left untouched.");
-
-    auto *themesDirRow = new QHBoxLayout();
-    themesDirRow->addWidget(btnOpenThemesDir);
-    themesDirRow->addStretch();
-    themesDirRow->addWidget(btnRestoreThemes);
-    appearanceLayout->addLayout(themesDirRow);
-    appearanceLayout->addStretch();
-
-    connect(btnOpenThemesDir, &QPushButton::clicked, this, [] {
-        QDir().mkpath(ThemeManager::themesDirPath()); // no-op if it already exists
-        QDesktopServices::openUrl(QUrl::fromLocalFile(ThemeManager::themesDirPath()));
-    });
-
-    connect(btnRestoreThemes, &QPushButton::clicked, this, &SettingsDialog::restoreDefaultThemes);
-
-    connect(m_themingEnabledCheck, &QCheckBox::toggled, this, [this](bool checked) {
-        ThemeManager::setThemingEnabled(checked);
-        m_themeCombo->setEnabled(checked);
-    });
-
-    connect(m_themeCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
-        ThemeManager::applyTheme(m_themeCombo->itemData(idx).toString());
-    });
-
-    m_tabs->addTab(appearanceWidget, "Appearance");
 
     // ── Tab: Output Formats ───────────────────────────────────────────────────
     auto *fmtWidget = new QWidget();
@@ -360,34 +261,6 @@ void SettingsDialog::runPrecheck() {
     QSettings s("SonifiQ", "SonifiQ");
     for (const auto &f : m_formats)
         s.setValue("format_available/" + f.id, f.available);
-}
-
-// Recreates any built-in theme .json file that's missing from the themes
-// folder (e.g. the user deleted "dark.json"). Never touches files that
-// already exist, so edited built-ins and custom themes are left alone.
-void SettingsDialog::restoreDefaultThemes() {
-    if (ThemeManager::missingBuiltInThemeIds().isEmpty()) {
-        QMessageBox::information(this, "Restore Default Themes",
-                                 "All default themes are already present in the themes folder.");
-        return;
-    }
-
-    const int restored = ThemeManager::restoreMissingBuiltInThemes();
-
-    // Repopulate the picker so the restored theme(s) show up immediately,
-    // keeping whatever's currently selected/previewed if it still exists.
-    const QString keepId = m_themeCombo->currentData().toString();
-    m_themeCombo->blockSignals(true);
-    m_themeCombo->clear();
-    for (const Theme &t : ThemeManager::allThemes())
-        m_themeCombo->addItem(t.name, t.id);
-    int idx = m_themeCombo->findData(keepId);
-    m_themeCombo->setCurrentIndex(idx >= 0 ? idx : 0);
-    m_themeCombo->blockSignals(false);
-
-    QMessageBox::information(this, "Restore Default Themes",
-                             restored == 1 ? "Restored 1 default theme."
-                                           : QString("Restored %1 default themes.").arg(restored));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

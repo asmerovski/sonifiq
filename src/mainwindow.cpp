@@ -1,5 +1,4 @@
 #include "mainwindow.h"
-#include "thememanager.h"
 #include <QApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -34,34 +33,6 @@
 #include <QPainterPath>
 #include <QFont>
 #include <utility>
-
-// File/folder pickers deliberately do NOT pass DontUseNativeDialog, so Qt
-// uses whatever native dialog integration the platform provides:
-//   - KDE Plasma: the real KDE/KIO file dialog (Dolphin-style "Places"
-//     sidebar, thumbnails, remote/KIO locations, Breeze styling) via the
-//     plasma-integration platform theme plugin, if installed.
-//   - GNOME/other Linux: the portal or GTK file chooser, if available.
-//   - Windows / macOS: the native Explorer-style picker / Finder panel.
-//
-// On Windows/macOS a native dialog is drawn entirely outside Qt, so our QSS
-// genuinely can't reach it. KDE's "native" dialog is different: KIO's
-// KFileWidget is built from ordinary Qt widgets running in this same
-// process, so it still inherits qApp's stylesheet. Without this guard, our
-// app-wide QWidget/QTreeView rules partially override its Breeze styling
-// (explicit background/text colors, but not alternate-row colors), which is
-// what produced the broken black-banded rows. Clearing the stylesheet for
-// the dialog's lifetime keeps it fully native everywhere this matters.
-class ScopedClearAppTheme {
-public:
-    ScopedClearAppTheme() : m_saved(qApp->styleSheet()) {
-        qApp->setStyleSheet(QString());
-    }
-    ~ScopedClearAppTheme() {
-        qApp->setStyleSheet(m_saved);
-    }
-private:
-    QString m_saved;
-};
 
 // ── Audio extensions accepted as input ───────────────────────────────────────
 static const QStringList &audioExtensions() {
@@ -146,10 +117,6 @@ public:
     }
 
     // The empty "not yet processed" track and its outline follow the active
-    // theme (called at startup and whenever the theme changes), so the bar
-    // never looks mismatched against the surrounding UI. The success/failed/
-    // skipped segment colours themselves are intentionally NOT part of this
-    // — they stay fixed in every theme, as required.
     void setTrackColors(const QColor &bg, const QColor &border) {
         m_trackBg = bg;
         m_trackBorder = border;
@@ -168,8 +135,6 @@ protected:
         QPainterPath clipPath;
         clipPath.addRoundedRect(r, radius, radius);
 
-        // Empty track — themed fill + outline so it reads as a control
-        // rather than a stray dark patch, in both light and dark themes.
         p.setPen(Qt::NoPen);
         p.setBrush(m_trackBg);
         p.drawPath(clipPath);
@@ -739,7 +704,6 @@ void MainWindow::setupUI() {
     m_totalProgress = new SegmentedProgressBar();
     m_totalProgress->setMinimumWidth(280);
     m_totalProgress->reset(0);
-    applyProgressBarTheme();
     m_btnStart  = new QPushButton("Convert");
     m_btnCancel = new QPushButton("Cancel");
     m_btnStart->setObjectName("btnConvert");
@@ -918,21 +882,8 @@ void MainWindow::updateFormatOptions(int index) {
 void MainWindow::openSettings() {
     SettingsDialog dlg(this);
     int result = dlg.exec();
-    // The theme picker applies live, so re-sync the progress bar's track
-    // colours regardless of Accepted/Cancelled — the theme change itself
-    // isn't undone by Cancel.
-    applyProgressBarTheme();
     if (result == QDialog::Accepted)
         rebuildFormatCombo();
-}
-
-// Keeps the progress bar's empty-track fill/outline in sync with the active
-// theme. Only the neutral "not yet processed" background is themed here —
-// the success/failed/skipped segment colours are fixed in every theme.
-void MainWindow::applyProgressBarTheme() {
-    if (!m_totalProgress) return;
-    const Theme t = ThemeManager::themeById(ThemeManager::currentThemeId());
-    m_totalProgress->setTrackColors(t.baseBg, t.borderColor);
 }
 
 // ── Add single file row (dedup) ───────────────────────────────────────────────
@@ -1113,14 +1064,10 @@ static void reportDuplicates(QWidget *parent, const QStringList &dupes) {
 }
 
 void MainWindow::addFiles() {
-    QStringList files;
-    {
-        ScopedClearAppTheme _native;
-        files = QFileDialog::getOpenFileNames(
-            this, "Add Audio Files", QDir::homePath(),
-            "Audio Files (*.flac *.mp3 *.ogg *.opus *.wav *.aiff *.aif "
-            "*.m4a *.aac *.wma *.ape *.wv *.mka *.tta);;All Files (*)");
-    }
+    QStringList files = QFileDialog::getOpenFileNames(
+        this, "Add Audio Files", QDir::homePath(),
+        "Audio Files (*.flac *.mp3 *.ogg *.opus *.wav *.aiff *.aif "
+        "*.m4a *.aac *.wma *.ape *.wv *.mka *.tta);;All Files (*)");
     QStringList dupes;
     for (const QString &p : files) addFileRow(p, &dupes);
     reportDuplicates(this, dupes);
@@ -1137,11 +1084,7 @@ static bool hasVisibleSubdirectories(const QString &dirPath) {
 }
 
 void MainWindow::addFolder() {
-    QString dir;
-    {
-        ScopedClearAppTheme _native;
-        dir = QFileDialog::getExistingDirectory(this, "Add Folder", QDir::homePath());
-    }
+    QString dir = QFileDialog::getExistingDirectory(this, "Add Folder", QDir::homePath());
     if (dir.isEmpty()) return;
 
     bool recursive = false;
@@ -1232,11 +1175,7 @@ void MainWindow::dropEvent(QDropEvent *e) {
 // ── Output path ───────────────────────────────────────────────────────────────
 
 void MainWindow::browseOutputDir() {
-    QString dir;
-    {
-        ScopedClearAppTheme _native;
-        dir = QFileDialog::getExistingDirectory(this, "Select Output Directory");
-    }
+    QString dir = QFileDialog::getExistingDirectory(this, "Select Output Directory");
     if (!dir.isEmpty()) m_outputDirEdit->setText(dir); // triggers updateDestLinkState via textChanged
 }
 

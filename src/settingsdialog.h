@@ -34,15 +34,8 @@ public:
     // QSettings without needing a dialog instance. Called on app startup.
     static void probeAndSaveCodecs();
 
-public slots:
-    // Overridden so Cancel / Escape / the window's close button all revert
-    // the live theme preview back to whatever was active when the dialog
-    // opened — not just clicking the Cancel button specifically.
-    void reject() override;
-
 private slots:
     void runPrecheck();
-    void restoreDefaultThemes();
 
 private:
     void setupUI();
@@ -56,8 +49,4 @@ private:
     QPushButton             *m_btnCheck;
     QLabel                  *m_checkStatus;
     QSpinBox                *m_threadsSpin = nullptr;
-    QCheckBox                *m_themingEnabledCheck = nullptr;
-    QComboBox               *m_themeCombo  = nullptr;
-    QString                  m_originalThemeId;
-    bool                     m_originalThemingEnabled = true;
 };
