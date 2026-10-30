@@ -24,7 +24,7 @@
 #include <QScrollBar>
 #include <QDialog>
 #include <QMenu>
-#include <QMenuBar>
+#include <QStyle>
 #include <QDesktopServices>
 #include <QMouseEvent>
 #include <QToolTip>
@@ -491,13 +491,6 @@ MainWindow::~MainWindow() {
 // ── UI Setup ──────────────────────────────────────────────────────────────────
 
 void MainWindow::setupUI() {
-    auto *helpMenu = menuBar()->addMenu("&Help");
-    auto *aboutAction = helpMenu->addAction("&About SonifiQ");
-    connect(aboutAction, &QAction::triggered, this, [this]() {
-        QMessageBox::about(this, "About SonifiQ",
-                           QString("SonifiQ %1").arg(QApplication::applicationVersion()));
-    });
-
     auto *central = new QWidget(this);
     setCentralWidget(central);
     auto *rootLayout = new QHBoxLayout(central);
@@ -562,6 +555,32 @@ void MainWindow::setupUI() {
     sideLayout->addStretch();
     sideOuterLayout->addWidget(sideGroup);
     sideOuterLayout->addStretch();
+    auto *aboutButton = new QPushButton();
+    aboutButton->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
+    aboutButton->setIconSize(QSize(20, 20));
+    aboutButton->setFixedSize(32, 32);
+    aboutButton->setObjectName("btnSecondary");
+    aboutButton->setToolTip("About SonifiQ");
+    aboutButton->setAccessibleName("About SonifiQ");
+    sideOuterLayout->addWidget(aboutButton, 0, Qt::AlignLeft);
+    connect(aboutButton, &QPushButton::clicked, this, [this]() {
+        QMessageBox aboutBox(this);
+        aboutBox.setWindowTitle("About SonifiQ");
+        aboutBox.setIconPixmap(QApplication::windowIcon().pixmap(64, 64));
+        aboutBox.setText(
+            QString("<h3>SonifiQ %1</h3>"
+                    "<p>A Qt audio format converter for Linux.</p>"
+                    "<p>Author: Asmer Mlaćo<br>"
+                    "License: GNU General Public License v3.0</p>"
+                    "<p>GitHub: github.com/asmerovski/sonifiq</p>")
+                .arg(QApplication::applicationVersion()));
+        aboutBox.setStandardButtons(QMessageBox::Close);
+        auto *githubButton = aboutBox.addButton("Open GitHub", QMessageBox::ActionRole);
+        connect(githubButton, &QPushButton::clicked, this, []() {
+            QDesktopServices::openUrl(QUrl("https://github.com/asmerovski/sonifiq"));
+        });
+        aboutBox.exec();
+    });
     sidebar->setWidget(sideWidget);
     rootLayout->addWidget(sidebar);
 
