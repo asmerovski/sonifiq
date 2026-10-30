@@ -1,5 +1,18 @@
 <RCC>
     <qresource prefix="/icons">
         <file>res/icons/app.svg</file>
+        <file>res/icons/add-files.svg</file>
+        <file>res/icons/add-folder.svg</file>
+        <file>res/icons/remove.svg</file>
+        <file>res/icons/clear-all.svg</file>
+        <file>res/icons/settings.svg</file>
+        <file>res/icons/log.svg</file>
+        <file>res/icons/browse.svg</file>
+        <file>res/icons/open-folder.svg</file>
+        <file>res/icons/convert.svg</file>
+        <file>res/icons/cancel.svg</file>
+        <file>res/icons/clear-log.svg</file>
+        <file>res/icons/codec-check.svg</file>
+        <file>res/icons/close.svg</file>
     </qresource>
 </RCC>

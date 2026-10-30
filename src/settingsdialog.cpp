@@ -8,6 +8,7 @@
 #include <QSettings>
 #include <QDialogButtonBox>
 #include <QApplication>
+#include <QIcon>
 #include <QStyle>
 #include <QLabel>
 #include <QThread>
@@ -141,6 +142,7 @@ void SettingsDialog::setupUI() {
     // Precheck row
     auto *precheckRow = new QHBoxLayout();
     m_btnCheck = new QPushButton("Check Codec Availability");
+    m_btnCheck->setIcon(QIcon(":/icons/res/icons/codec-check.svg"));
     m_btnCheck->setObjectName("btnPrimary");
     m_checkStatus = new QLabel("");
     m_checkStatus->setObjectName("checkStatus");

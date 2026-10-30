@@ -29,6 +29,7 @@
 #include <QToolTip>
 #include <QListWidget>
 #include <QDialogButtonBox>
+#include <QIcon>
 #include <QPainter>
 #include <QPainterPath>
 #include <QFont>
@@ -571,12 +572,18 @@ void MainWindow::setupUI() {
     m_btnRemove    = new QPushButton("Remove");
     m_btnClear     = new QPushButton("Clear All");
     m_btnSettings  = new QPushButton("Settings");
+    m_btnAddFiles->setIcon(QIcon(":/icons/res/icons/add-files.svg"));
+    m_btnAddFolder->setIcon(QIcon(":/icons/res/icons/add-folder.svg"));
+    m_btnRemove->setIcon(QIcon(":/icons/res/icons/remove.svg"));
+    m_btnClear->setIcon(QIcon(":/icons/res/icons/clear-all.svg"));
+    m_btnSettings->setIcon(QIcon(":/icons/res/icons/settings.svg"));
     m_btnAddFiles->setObjectName("btnPrimary");
     m_btnAddFolder->setObjectName("btnPrimary");
     m_btnRemove->setObjectName("btnSecondary");
     m_btnClear->setObjectName("btnSecondary");
     m_btnSettings->setObjectName("btnSecondary");
     m_btnToggleLog = new QPushButton("Log");
+    m_btnToggleLog->setIcon(QIcon(":/icons/res/icons/log.svg"));
     m_btnToggleLog->setObjectName("btnSecondary");
     m_btnToggleLog->setCheckable(true);
     m_btnToggleLog->setChecked(false);
@@ -670,6 +677,7 @@ void MainWindow::setupUI() {
     m_outputDirEdit->setEnabled(false);
     destLayout->addWidget(m_outputDirEdit, 1);
     m_btnBrowse = new QPushButton("Browse");
+    m_btnBrowse->setIcon(QIcon(":/icons/res/icons/browse.svg"));
     m_btnBrowse->setObjectName("btnSecondary");
     m_btnBrowse->setEnabled(false);
     destLayout->addWidget(m_btnBrowse);
@@ -684,6 +692,7 @@ void MainWindow::setupUI() {
     // meaningful when a fixed output directory is in use — when files are
     // saved next to their sources there's no single folder to open.
     m_btnOpenDestDir = new QPushButton("Open destination folder");
+    m_btnOpenDestDir->setIcon(QIcon(":/icons/res/icons/open-folder.svg"));
     m_btnOpenDestDir->setObjectName("linkButton");
     m_btnOpenDestDir->setFlat(true);
     m_btnOpenDestDir->setCursor(Qt::PointingHandCursor);
@@ -706,6 +715,8 @@ void MainWindow::setupUI() {
     m_totalProgress->reset(0);
     m_btnStart  = new QPushButton("Convert");
     m_btnCancel = new QPushButton("Cancel");
+    m_btnStart->setIcon(QIcon(":/icons/res/icons/convert.svg"));
+    m_btnCancel->setIcon(QIcon(":/icons/res/icons/cancel.svg"));
     m_btnStart->setObjectName("btnConvert");
     m_btnCancel->setObjectName("btnSecondary");
     m_btnCancel->setEnabled(false);
@@ -735,6 +746,7 @@ void MainWindow::setupUI() {
     QLabel *logTitle = new QLabel("ffmpeg output");
     logTitle->setObjectName("logTitle");
     auto *btnClearLog = new QPushButton("Clear");
+    btnClearLog->setIcon(QIcon(":/icons/res/icons/clear-log.svg"));
     btnClearLog->setObjectName("btnSecondary");
     btnClearLog->setFixedHeight(24);
     auto *chkAutoScroll = new QCheckBox("Auto-scroll");
@@ -1582,6 +1594,7 @@ void MainWindow::showLogPopup(int row) {
 
     // Close button
     auto *btnClose = new QPushButton("Close");
+    btnClose->setIcon(QIcon(":/icons/res/icons/close.svg"));
     connect(btnClose, &QPushButton::clicked, dlg, &QDialog::accept);
     auto *btnRow = new QHBoxLayout();
     btnRow->addStretch();
