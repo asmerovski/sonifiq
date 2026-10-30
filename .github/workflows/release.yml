@@ -1,8 +1,8 @@
 name: Release Packages
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Smoke-test builds on every push/PR; attaches release assets only when a
-# version tag (v*) is pushed.
+# Smoke-test builds on every push/PR; attach release assets when a version tag
+# is pushed or when a GitHub Release is published.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   workflow_dispatch:
@@ -11,6 +11,8 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main, master]
+  release:
+    types: [published]
 
 concurrency:
   group: release-${{ github.ref }}
@@ -21,15 +23,15 @@ permissions:
 
 env:
   APP_NAME:    sonifiQ
-  APP_BINARY:  sonifiq            # matches add_executable(sonifiq ...) in CMakeLists.txt
-  APP_ID:      io.sonifiq.sonifiQ  # Flatpak / AppStream application ID
-  PKG_NAME:    sonifiq            # lowercase, used for .deb/.rpm/PKGBUILD names
+  APP_BINARY:  sonifiq
+  APP_ID:      io.sonifiq.sonifiQ
+  PKG_NAME:    sonifiq
 
 jobs:
 
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   # DEB  (Ubuntu 24.04 / CPack DEB)
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   deb:
     name: Debian Package (amd64)
     runs-on: ubuntu-24.04
@@ -83,14 +85,15 @@ jobs:
           if-no-files-found: error
 
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: build/${{ env.APP_NAME }}-${{ github.ref_name }}-linux-amd64.deb
 
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   # RPM  (Fedora 40 container / CPack RPM)
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   rpm:
     name: RPM Package (x86_64)
     runs-on: ubuntu-24.04
@@ -139,14 +142,15 @@ jobs:
           if-no-files-found: error
 
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: build/${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.rpm
 
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   # Arch Linux  (archlinux:latest container / makepkg)
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   arch:
     name: Arch Linux Package (x86_64)
     runs-on: ubuntu-24.04
@@ -179,7 +183,7 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=$VER/" /tmp/pkgbuild/PKGBUILD
           tar --exclude='.git' -czf /tmp/pkgbuild/${{ env.PKG_NAME }}-$VER.tar.gz \
             --transform "s|^\./|${{ env.PKG_NAME }}-$VER/|" .
-
+  
       - name: Set up build user
         run: |
           useradd -m builder
@@ -201,14 +205,15 @@ jobs:
           if-no-files-found: error
 
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: ${{ env.APP_NAME }}-${{ github.ref_name }}-arch-x86_64.pkg.tar.zst
 
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   # AppImage  (Ubuntu 24.04 / linuxdeploy + Qt plugin)
-  # ───────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   appimage:
     name: AppImage (x86_64)
     runs-on: ubuntu-24.04
@@ -278,7 +283,8 @@ jobs:
           if-no-files-found: error
 
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x86_64.AppImage
