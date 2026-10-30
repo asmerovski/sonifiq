@@ -24,6 +24,7 @@
 #include <QScrollBar>
 #include <QDialog>
 #include <QMenu>
+#include <QMenuBar>
 #include <QDesktopServices>
 #include <QMouseEvent>
 #include <QToolTip>
@@ -490,6 +491,13 @@ MainWindow::~MainWindow() {
 // ── UI Setup ──────────────────────────────────────────────────────────────────
 
 void MainWindow::setupUI() {
+    auto *helpMenu = menuBar()->addMenu("&Help");
+    auto *aboutAction = helpMenu->addAction("&About SonifiQ");
+    connect(aboutAction, &QAction::triggered, this, [this]() {
+        QMessageBox::about(this, "About SonifiQ",
+                           QString("SonifiQ %1").arg(QApplication::applicationVersion()));
+    });
+
     auto *central = new QWidget(this);
     setCentralWidget(central);
     auto *rootLayout = new QHBoxLayout(central);
