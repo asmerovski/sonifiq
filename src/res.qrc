@@ -14,5 +14,7 @@
         <file>res/icons/clear-log.svg</file>
         <file>res/icons/codec-check.svg</file>
         <file>res/icons/close.svg</file>
+        <file>res/icons/play.svg</file>
+        <file>res/icons/stats.svg</file>
     </qresource>
 </RCC>

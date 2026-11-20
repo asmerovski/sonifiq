@@ -131,7 +131,7 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, true);
-        QRectF r = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
         const double radius = 3.0;
 
         QPainterPath clipPath;
@@ -740,9 +740,10 @@ void MainWindow::setupUI() {
     m_totalProgress = new SegmentedProgressBar();
     m_totalProgress->setMinimumWidth(280);
     m_totalProgress->reset(0);
+    m_totalProgress->hide();
     m_btnStart  = new QPushButton("Convert");
     m_btnCancel = new QPushButton("Cancel");
-    m_btnStart->setIcon(QIcon(":/icons/res/icons/convert.svg"));
+    m_btnStart->setIcon(QIcon(":/icons/res/icons/play.svg"));
     m_btnCancel->setIcon(QIcon(":/icons/res/icons/cancel.svg"));
     m_btnStart->setObjectName("btnConvert");
     m_btnCancel->setObjectName("btnSecondary");
@@ -876,7 +877,8 @@ void MainWindow::updateStats() {
     int success, failed, skipped, pending;
     computeRowCounts(success, failed, skipped, pending);
     m_statsLabel->setText(
-        QString("<span style='color:#4caf7d;'>✓ %1 successful</span>"
+        QString("<img src=\":/icons/res/icons/stats.svg\" width=\"16\" height=\"16\"> &nbsp; "
+            "<span style='color:#4caf7d;'>✓ %1 successful</span>"
                 "&nbsp;&nbsp;&nbsp;&nbsp;"
                 "<span style='color:#e05c5c;'>✗ %2 failed</span>"
                 "&nbsp;&nbsp;&nbsp;&nbsp;"
@@ -1365,7 +1367,9 @@ void MainWindow::startConversion() {
     }
 
     m_totalProgress->reset(total);
+    m_totalProgress->show();
     m_btnStart->setEnabled(false);
+    m_btnStart->setIcon(QIcon(":/icons/res/icons/convert.svg"));
     m_btnCancel->setEnabled(true);
     m_btnAddFiles->setEnabled(false);
     m_btnAddFolder->setEnabled(false);
@@ -1444,7 +1448,9 @@ void MainWindow::onJobFinished(int row, bool success, QString errorMsg) {
 
     if (remaining <= 0) {
         m_running = false;
+        m_totalProgress->hide();
         m_btnStart->setEnabled(true);
+        m_btnStart->setIcon(QIcon(":/icons/res/icons/play.svg"));
         m_btnCancel->setEnabled(false);
         m_btnAddFiles->setEnabled(true);
         m_btnAddFolder->setEnabled(true);
